@@ -1,0 +1,13 @@
+name: lerobot
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - jupyter
+  - conda-forge::mediapy
+  - pip:
+    # Doubt these work, just pip install lerobot from the cloned repo with `pip install .` and `pip install ".[aloha, pusht]"
+    - ./lerobot
+    - "./lerobot/[aloha, pusht]"
+
+prefix: /Users/Eugene/miniconda3/envs/lerobot

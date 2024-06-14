@@ -1,3 +1,6 @@
 [submodule "lerobot"]
 	path = lerobot
 	url = git@github.com:huggingface/lerobot.git
+[submodule "xArm-Python-SDK"]
+	path = xArm-Python-SDK
+	url = git@github.com:xArm-Developer/xArm-Python-SDK.git

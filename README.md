@@ -123,3 +123,7 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 ### JTOP
 To view GPU usage, install jtop with `sudo pip3 install -U jetson-stats`
 Run with `jtop` after logout
+
+### SSH forwarding
+On client, `ssh-add`
+On server, uncomment `AllowAgentForwarding` in /etc/ssh/sshd_config
