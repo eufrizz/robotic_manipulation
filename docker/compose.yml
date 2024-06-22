@@ -1,0 +1,27 @@
+services:
+  ros_base:
+    container_name: ros_base
+    image: ros_iron_opencv_l4t32.6
+    build:
+      dockerfile: Dockerfile
+    volumes:
+      - ../:/home/user/robotic_manipulation
+      #- /usr/local/lib/librealsense2.so:/usr/local/lib/librealsense2.so
+      #- /usr/local/lib/cmake/realsense2:/usr/local/lib/cmake/realsense2
+      #- /usr/local/include/librealsense2:/usr/local/include/librealsense2
+      - /dev:/dev
+    device_cgroup_rules:
+      - 'c 81:* rmw'
+      - 'c 189:* rmw'
+    tty: true
+    network_mode: host
+    hostname: ros_base
+    runtime: nvidia
+    #devices:
+      #- /dev/video0:/dev/video0
+      #- /dev/video1:/dev/video1
+      #- /dev/video2:/dev/video2
+      #- /dev/video3:/dev/video3
+      #- /dev/video4:/dev/video4
+      #- /dev/video5:/dev/video5
+
