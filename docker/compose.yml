@@ -15,7 +15,7 @@ services:
       - 'c 189:* rmw'
     tty: true
     network_mode: host
-    hostname: ros_base
+    # hostname: ros_base
     runtime: nvidia
     #devices:
       #- /dev/video0:/dev/video0
