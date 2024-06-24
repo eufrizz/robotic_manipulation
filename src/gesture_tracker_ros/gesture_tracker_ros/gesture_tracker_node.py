@@ -58,7 +58,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
 
 class GestureTrackerNode(Node):
-    def __init__(self, rate=30):
+    def __init__(self, rate=10):
         super().__init__('realsense_node')
         self.bridge = CvBridge()
 
@@ -77,17 +77,19 @@ class GestureTrackerNode(Node):
 
         # ROS2 publisher for image topic
         self.image_pub = self.create_publisher(Image, 'camera/color/image_raw', 10)
-        self.timer = self.create_timer(1.0/rate, self.capture_and_publish)  # Adjust timer based on desired frame rate
+        self.timer = self.create_timer(1.0/rate, self.capture)  # Adjust timer based on desired frame rate
 
         # mediapipe setup
         base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
         options = vision.HandLandmarkerOptions(base_options=base_options,
-                                       num_hands=1)
+                                       num_hands=1, running_mode=vision.RunningMode.LIVE_STREAM,
+                                               result_callback=self.detection_cb)
         self.detector = vision.HandLandmarker.create_from_options(options)
+        self.latest_detection_timestamp = None
         print("Node init finished")
         #self.capture_and_publish()
 
-    def capture_and_publish(self):
+    def capture(self):
         #while rclpy.ok():
             frames = self.pipeline.wait_for_frames()
             color_frame = frames.get_color_frame()
@@ -96,21 +98,29 @@ class GestureTrackerNode(Node):
                 return
                 #continue
 
-            # Convert image to OpenCV format
+            timestamp = self.get_clock().now()
+            
+            if (self.latest_detection_timestamp is not None and self.latest_detection_timestamp.nanoseconds < timestamp.nanoseconds - 0.2*1e9):
+                print("lagging, skip frame")
+                # Convert image to OpenCV format
             color_image = np.asanyarray(color_frame.get_data())
             mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=color_image)
-            detection_result = self.detector.detect(mp_img)
-            print(detection_result)
+            self.detector.detect_async(mp_img, int(timestamp.nanoseconds / 1e6))
             
-            annotated_image = draw_landmarks_on_image(mp_img.numpy_view(), detection_result)
             
-            img = annotated_image 
-            # Create ROS Image message
-            image_msg = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
-            image_msg.header.frame_id = 'camera_color_frame'
-            image_msg.header.stamp = self.get_clock().now().to_msg()
 
-            self.image_pub.publish(image_msg)
+    def detection_cb(self, result: mp.tasks.vision.HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
+        self.latest_detection_timestamp = rclpy.time.Time(nanoseconds=timestamp_ms * 1e6)
+        annotated_image = draw_landmarks_on_image(output_image.numpy_view(), result)
+        
+        img = annotated_image  
+        # Create ROS Image message
+        image_msg = self.bridge.cv2_to_imgmsg(img, encoding="bgr8")
+        image_msg.header.frame_id = 'camera_color_frame'
+        image_msg.header.stamp = self.latest_detection_timestamp.to_msg()
+
+        self.image_pub.publish(image_msg)
+        #print(image_msg)
 
 def main():
 
