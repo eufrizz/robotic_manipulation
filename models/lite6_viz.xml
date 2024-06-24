@@ -109,6 +109,7 @@
                   <joint name="joint6" range="-6.28319 6.28319"/>
                   <geom class="visual" mesh="link6" material="silver"/>
                   <geom class="collision" mesh="link6_c"/>
+                  <!-- Attachment site site -->
                   <site name="attachment_site"/>
                 </body>
               </body>

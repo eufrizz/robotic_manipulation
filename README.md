@@ -106,8 +106,18 @@ cmake .. -DBUILD_PYTHON_BINDINGS=true -DBUILD_EXAMPLES=true -DCMAKE_BUILD_TYPE=r
 ```
 Thanks to this [GitHub issue ](https://github.com/IntelRealSense/librealsense/issues/12566)
 
-Couldn't get pytho
+#### Python
+Couldn't get python to work.
+Had to copy across the pyrealsense*.so
+Which I fixed by adding this to the python CMakelists:
+```
+ install(TARGETS pyrealsense2
+    LIBRARY DESTINATION ${PYTHON_INSTALL_DIR}
+ )
+ install(FILES pyrealsense2/__init__.py DESTINATION ${PYTHON_INSTALL_DIR})
+```
 
+#### Viewer
 Forwarding OpenGL/realsense viewer over SSH doesn't work (not withot the pain of setting up external rendering), so just stick to connecting to a screen. Interestingly, glxgears works though.
 
 Inside the container, I had to run ldconfig to get the librealsense to show up
@@ -179,6 +189,59 @@ To build images for jetson, use this repo: https://github.com/dusty-nv/jetson-co
 
 Then to fix the classic docker socket problem, `sudo usermod -a -G docker $USER` and log back in
 
+Add "default-runtime": "nvidia" to your /etc/docker/daemon.json configuration file before attempting to build the containers:
+```
+{
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+
+    "default-runtime": "nvidia"
+}
+```
+Then restart the Docker service, or reboot your system before proceeding: `sudo systemctl restart docker`
+
+### SSD
+I couldn't be bothered to make the jetson boot on SSD, so I decided to just mount the SSD and place docker data and other heavy things there. Also means I'll make better use of the 64GB eMMC cause otherwise I'd just do everything on SSD.
+Format with sudo gnome-disks (over ssh -X)
+Check `lsblk` - should be nvme0 or something similar. `lsblk -f` tells you uuid
+```
+sudo mkdir /mount/ssd
+sudo mount /dev/nvme0n1 /media/ssd
+sudo chmod 755 /media/ssd
+sudo vim /etc/fstab
+# Add line: UUID=<uuid>  /media/ssd  ext4  defaults  0  2
+
+# Test the fstab config
+sudo umount /dev/nvme0n1
+sudo mount -a
+```
+Make sure no errors are thrown, then you're good to restart and it will be mounted by default
+
+Docker transfer:
+```
+sudo cp -r /var/lib/docker /media/ssd/docker # to transfer the cache
+sudo vim /etc/docker/daemon.json
+```
+add "data-root": "/mnt/docker"
+```
+{
+    "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+    },
+
+    "default-runtime": "nvidia",
+    "data-root": "/mnt/docker"
+}
+```
+confirm the changes by looking under `docker info`
+
 ### Neovim
 Apt version of neovim is v0.6 whilst snap version is v0.10, which allows us to use lazy
 So `sudo snap install nvim` (apt remove neovim if you already installed it with apt)
@@ -195,7 +258,8 @@ Space > e will open up the neo-tree sidebar showing directory structure
 Instead of installing ROS, I decided to just pull the image ros-jazzy-vision-opencv.
 Mounted librealsense, and could compile, but it was unable to connect with the camera, giving the `Frame didn't arrive within 15000` error, even though it worked fine outside the container. Tested with rs-hello-realsense and a super basic test program compiled from C++, but to no avail.
 Pulled the dustynv ros-humble image (iron didn't have a premade L4T 36), and it failed because it couldn't find libusb. Apt search for libusb returned nothing. In hindsight, probably could have got it installed but anyway I moved on...
-Cloned the jetson-containers repo and built l4t-r36.2.0-ros_iron-ros-core image (at least we're using later ROS than humble). Jazzy is for Ubuntu 24. There was an issue with numpy 2 which just got released last week breaking the build, but thankfully managed to patch it myself by pip downgrading numpy (https://github.com/dusty-nv/jetson-containers/issues/561#issuecomment-2181686554). 
+Cloned the jetson-containers repo and built l4t-r36.2.0-ros_iron-ros-core image (at least we're using later ROS than humble). Jazzy is for Ubuntu 24. There was an issue with numpy 2 which just got released last week breaking the build, but thankfully managed to patch it myself by pip downgrading numpy (https://github.com/dusty-nv/jetson-containers/issues/561#issuecomment-2181686554).
+Make sure to use the `opencv:deb` version of OpenCV when building the jetson-containers image
 
 rosdep install -i --from-path src --rosdistro $ROS_DISTRO --skip-keys "librealsense2 opencv" -y
 
@@ -212,17 +276,23 @@ To install realsense ROS there were issues.
 2. apt still broken with opencv - requires apt download <pkg> and dpkg --force-all -i <pkg>
     a. Turns out you can edit /var/lib/dpkg/status manually!
 
+'build-essential', 'cuda:12.2', 'cudnn:8.9', 'python', 'tensorrt', 'numpy', 'opencv:deb', 'cmake', 'ros:iron-ros-core'
+Seems that the OpenCV installation fails to have CUDA anyway?
 
-# ROS MacOS
-Docker on macOS can't do net=host, you can only expose specified ports. It was really hard to find what ports DDS used (for ROS2 discovery), and I spent a bit of time playing with it but with no result, so I decided to forego docker.
+
+## ROS MacOS
+Docker on macOS can't do net=host, you can only expose specified ports. It was really hard to find what ports DDS used (for ROS2 discovery), and I spent a bit of time playing with it but with no result, so I decided to forego docker. EDIT: I also didn't set ROS_DOMAIN_ID, so that could have screwed it up altogether
 
 This meant building ROS, which is the only was to get it on mac and is not very well supported. Didn't end up getting it to work as the builtin_interfaces package would throw the error "could not import generator.py" or something like that. Here were the notes anyway
 
+>This was useful: https://github.com/mawson-rovers/ros2_mac_setup
 >Use Python 3.11 in venv
 >Make sure to install numpy==1.26.4 (last version before 2)
 >PATH had python12 in it
 >
 >For vcs: `open /Applications/Python\ 3.11/Install\ Certificates.command`
+>
+> Maybe this can help? https://github.com/dcedyga/ros2docker-mac-network
 >
 >To try:
 >lsof -i to see ports
@@ -231,3 +301,13 @@ This meant building ROS, which is the only was to get it on mac and is not very 
 >Run with screen attached
 
 I then remembered Foxglove! There is a macOS version. Simply run the foxglove_bridge node on the jetson, and connect via the websocket on mac. Works pretty well!
+
+## ROS 2
+https://roboticsbackend.com/ros1-vs-ros2-practical-overview/
+Need to set ROS_DOMAIN_ID
+
+Realsense publishing:
+while loop: 34% CPU, 27Hz
+timer: 35% CPU, 25Hz
+
+setting config to 640*480, 30fps: same
