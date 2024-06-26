@@ -4,3 +4,6 @@
 [submodule "xArm-Python-SDK"]
 	path = xArm-Python-SDK
 	url = git@github.com:xArm-Developer/xArm-Python-SDK.git
+[submodule "mujoco_menagerie"]
+	path = mujoco_menagerie
+	url = git@github.com:google-deepmind/mujoco_menagerie.git

@@ -311,3 +311,5 @@ while loop: 34% CPU, 27Hz
 timer: 35% CPU, 25Hz
 
 setting config to 640*480, 30fps: same
+
+colcon build places install and build in the folder where you first build (if setup.bash has not already been sourced)

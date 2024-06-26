@@ -1,5 +1,5 @@
 <mujoco model="ufactory_lite6">
-  <compiler angle="radian" meshdir="/Users/Eugene/Developer/mujoco/mujoco_menagerie/ufactory_lite6/assets"/>
+  <compiler angle="radian" meshdir="../mujoco_menagerie/ufactory_lite6/assets"/>
 
   <option integrator="implicitfast"/>
 
