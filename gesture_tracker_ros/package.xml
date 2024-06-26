@@ -11,6 +11,7 @@
   <depend>rclpy</depend>
   <depend>cv_bridge</depend>
   <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
   # mujoco via pip
   # xarm xia git clone and install
   <test_depend>ament_copyright</test_depend>
