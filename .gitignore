@@ -174,3 +174,6 @@ resource/
 
 # macOS
 .DS_Store
+
+# Training
+runs

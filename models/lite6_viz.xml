@@ -1,5 +1,5 @@
 <mujoco model="ufactory_lite6">
-  <compiler angle="radian" meshdir="../mujoco_menagerie/ufactory_lite6/assets"/>
+  <compiler angle="radian" meshdir="/Users/Eugene/Developer/mujoco/mujoco_menagerie/ufactory_lite6/assets" autolimits="true"/>
 
   <option integrator="implicitfast"/>
 
@@ -137,7 +137,7 @@
     <general joint="joint6" class="size3" ctrlrange="-6.28319 6.28319"/>
   </actuator>
 
-  <keyframe>
+  <!-- <keyframe>
     <key name="home" qpos="0 0 1.57 0 1.57 0" ctrl="0 0 1.57 0 1.57 0"/>
-  </keyframe>
+  </keyframe> -->
 </mujoco>
