@@ -31,7 +31,7 @@ class UfactoryLite6Env(gym.Env):
 
         self.model = mujoco.MjModel.from_xml_path(xml_file)
         self.data = mujoco.MjData(self.model)
-        # self.renderer = mujoco.Renderer(self.model)
+        self.renderer = mujoco.Renderer(self.model)
 
         self.camera = mujoco.MjvCamera()
         mujoco.mjv_defaultFreeCamera(self.model, self.camera)
@@ -39,6 +39,11 @@ class UfactoryLite6Env(gym.Env):
         self.camera.elevation = -15
         self.camera.azimuth = -130
         self.camera.lookat = (0, 0, 0.3)
+
+        self.voption = mujoco.MjvOption()
+        self.voption.frame = mujoco.mjtFrame.mjFRAME_SITE
+
+        mujoco.mj_forward(self.model, self.data)
 
         self.bounds = [self.model.jnt_range[:, 0], self.model.jnt_range[:, 1]]
 
@@ -82,9 +87,9 @@ class UfactoryLite6Env(gym.Env):
         elif self.obs_type == "pixels_pose":
             self.observation_space = spaces.Dict(
                 {
-                  "image": spaces.Box(
+                  "pixels": spaces.Box(
                       low=0,
-                      high=255,
+                      high=256, # gives warning if 255
                       shape=(self.observation_height, self.observation_width, 3),
                       dtype=np.uint8,
                   ),
@@ -130,13 +135,15 @@ class UfactoryLite6Env(gym.Env):
         # Pos and quaternion
         self.action_space = spaces.Dict(
             {
-              "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
+              # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
+              # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
+              "qpos": spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32),
               "gripper": spaces.Discrete(2)
             }
         )
 
-    def render(self):
-        self.renderer.update_scene(self.data, self.camera)
+    def render(self, show_sites=False):
+        self.renderer.update_scene(self.data, self.camera, self.voption)
         return self.renderer.render()
 
     # def _render(self, visualize=False):
@@ -188,6 +195,7 @@ class UfactoryLite6Env(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
+        mujoco.mj_forward(self.model, self.data)
 
         observation = self._get_observation()
         info = {}
@@ -217,6 +225,7 @@ class UfactoryLite6Env(gym.Env):
     def step(self, action):
         assert action.ndim == 1
         # TODO(rcadene): add info["is_success"] and info["success"] ?
+        action.
 
         mujoco.mj_step(self.model, self.data)
         observation = self._get_observation()
@@ -240,7 +249,7 @@ class UfactoryLite6Env(gym.Env):
         pos = self.data.site('attachment_site').xpos
         quat = np.empty(4)
         mujoco.mju_mat2Quat(quat, self.data.site('attachment_site').xmat)
-        observation =  {"state": {"pos": np.stack(pos, quat), "gripper": 0}, "image": self.render()}
+        observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
         return observation
         
 

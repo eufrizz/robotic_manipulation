@@ -313,3 +313,9 @@ timer: 35% CPU, 25Hz
 setting config to 640*480, 30fps: same
 
 colcon build places install and build in the folder where you first build (if setup.bash has not already been sourced)
+
+## Compile MuJoCo files on MacOS
+```
+clang++ -o load_mujoco ../src/load_mujoco_model.cpp -L/usr/local/lib -I/usr/local/include/mujoco -lmujoco.3.1.5
+```
+May make more sense to just reference the headers and lib in in /Applications/Mujoco/Contents... but I installed them anyway
