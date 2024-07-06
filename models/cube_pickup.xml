@@ -2,10 +2,10 @@
     <include file="lite6_gripper.xml"/>
     <worldbody>
 
-        <body name="box" pos="0.2 0.2 0.05">
+        <body name="box" pos="0.2 0.2 0.0">
             <joint name="red_box_joint" type="free" frictionloss="0.01" />
-            <inertial pos="0.0025 0.0025 0.005" mass="0.05" diaginertia="0.0002 0.0002 0.0002" />
-            <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.005 0.005 0.01" type="box" name="red_box" rgba="1 0 0 1" />
+            <inertial pos="0.0025 0.0025 0.0025" mass="0.05" diaginertia="0.0002 0.0002 0.0002" />
+            <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.005 0.005 0.005" type="box" name="box" rgba="1 0 0 1" />
         </body>
 
     </worldbody>

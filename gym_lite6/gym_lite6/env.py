@@ -1,22 +1,24 @@
 import gymnasium as gym
 from gymnasium import utils, spaces
 import mujoco
+from mujoco import minimize
 import numpy as np
 from pathlib import Path
+import copy
 
 MODEL_DIR = Path(__file__).parent.parent.parent.resolve() / "models"  # note: absolute path
 
 class UfactoryLite6Env(gym.Env):
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 30}
 
     """
-    Action space: [pose (7),        # position and quaternion orientation of end effector
-                   gripper (1)      # gripper state (0: close, 1: open], discrete]
+    Action space: [qpos (6),        # joint angles
+                   gripper (1)      # gripper state (-1: close, 0: off, 1: open], discrete]
     Observation space: 
     """
     def __init__(
         self,
-        # task,
+        task,
         # xml_file: str = str(MODEL_DIR/"lite6_viz.xml"),
         xml_file: str = str(MODEL_DIR/"cube_pickup.xml"),
         obs_type="pixels_pose",
@@ -32,22 +34,17 @@ class UfactoryLite6Env(gym.Env):
         self.model = mujoco.MjModel.from_xml_path(xml_file)
         self.data = mujoco.MjData(self.model)
         self.renderer = mujoco.Renderer(self.model)
-
-        self.camera = mujoco.MjvCamera()
-        mujoco.mjv_defaultFreeCamera(self.model, self.camera)
-        self.camera.distance = 1.2
-        self.camera.elevation = -15
-        self.camera.azimuth = -130
-        self.camera.lookat = (0, 0, 0.3)
+        self.dof = 6
+        
 
         self.voption = mujoco.MjvOption()
-        self.voption.frame = mujoco.mjtFrame.mjFRAME_SITE
+        # self.voption.frame = mujoco.mjtFrame.mjFRAME_SITE
 
         mujoco.mj_forward(self.model, self.data)
 
-        self.bounds = [self.model.jnt_range[:, 0], self.model.jnt_range[:, 1]]
+        self.bounds = [self.model.jnt_range[:6, 0], self.model.jnt_range[:6, 1]]
 
-        # self.task = task
+        self.task = task
         self.obs_type = obs_type
         self.render_mode = render_mode
         self.observation_width = observation_width
@@ -60,17 +57,8 @@ class UfactoryLite6Env(gym.Env):
             # Pos and vel? Originally unimplemented
             self.observation_space = spaces.Dict(
               {
-                "pose" : spaces.Box(
-                  low=-100.0,
-                  high=100.0,
-                  shape=(self.model.nu,),
-                  dtype=np.float64,
-                ),
-                "gripper" : spaces.Discrete( # This could be continuous but we don't get gripper position feedback
-                  low=0,
-                  high=1,
-                  dtype=int,
-                )
+                "qpos": spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float64),
+                "gripper": spaces.Discrete(3, start=-1) # release, off, grip
               }
             )
         elif self.obs_type == "pixels":
@@ -98,37 +86,31 @@ class UfactoryLite6Env(gym.Env):
                         "pose" : spaces.Box(
                           low=-100.0,
                           high=100.0,
-                          shape=(self.model.nu,),
+                          shape=(7,),
                           dtype=np.float64,
                         ),
-                        "gripper" : spaces.Discrete(2) # This could be continuous but we don't get gripper position feedback
+                        "gripper" : spaces.Discrete(3, start=-1) # This could be continuous but we don't get gripper position feedback
                       }
                   ),
                 }
             )
-          # elif self.obs_type == "pixels_state":
-          #   self.observation_space = spaces.Dict(
-          #       {
-          #           "images": spaces.Dict(
-          #               {
-          #                   "top": spaces.Box(
-          #                       low=0,
-          #                       high=255,
-          #                       shape=(self.observation_height, self.observation_width, 3),
-          #                       dtype=np.uint8,
-          #                   )
-          #               }
-          #           ),
-          #           "state": spaces.Dict(
-          #               {
-          #                 spaces.Box(
-          #               low=-100.0,
-          #               high=100.0,
-          #               shape=(self.model.nv + 1,),
-          #               dtype=np.float64,
-          #           ),
-          #       }
-          #   )
+        elif self.obs_type == "pixels_state":
+          self.observation_space = spaces.Dict(
+              {
+                "pixels": spaces.Box(
+                    low=0,
+                    high=256,
+                    shape=(self.observation_height, self.observation_width, 3),
+                    dtype=np.uint8,
+                ),
+                  "state": spaces.Dict(
+                    {
+                      "qpos": spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float64),
+                      "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+                    }
+                  ),
+              }
+          )
         else:
           raise KeyError(f"Invalid observation type {self.obs_type}")
 
@@ -137,13 +119,97 @@ class UfactoryLite6Env(gym.Env):
             {
               # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
               # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
-              "qpos": spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float32),
-              "gripper": spaces.Discrete(2)
+              "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], dtype=np.float64),
+              "gripper": spaces.Discrete(3, start=-1) # release, off, grip
             }
         )
 
+    def gripper_action_to_force(self, action):
+        """
+        Map (-1, 1) to (min_force, max_force)
+        """
+        force =  {
+          -1: self.model.actuator('gripper').ctrlrange[0],
+           0: 0,
+           1: self.model.actuator('gripper').ctrlrange[1],
+        }[action]
+        return force
+
+    def force_to_gripper_action(self, force):
+        """
+        Map (-force limit, force limit) to discrete (0, 2)
+        """
+        if force < 1e-3:
+            return -1
+        elif force > 1e-3:
+            return 1
+        else:
+            return 0
+        
+    def normalize_qpos(self, qpos):
+        """
+        map from joint bounds to (-1, 1)
+        """
+        assert(qpos.shape[0] == 6)
+        bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
+        bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
+        return (qpos - bounds_centre) * 2.0 / bounds_range
+    
+    def unnormalize_qpos(self, qpos):
+        """
+        map from (-1, 1) to joint bounds
+        """
+        assert(qpos.shape[0] == 6)
+        bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
+        bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
+        return (qpos - bounds_centre) /2.0 * bounds_range
+    
+    def map_bounds(self, vals, in_range=None, out_range=None):
+        """
+        Todo: move to utils, write test
+        """
+        if in_range is None and out_range is None:
+            raise ValueError("One of in_range or out_range must be specified")
+        if in_range is None:
+            in_range = self.model.jnt_range[:6]
+        elif out_range is None:
+            out_range = self.model.jnt_range[:6]
+        
+        # if len(in_range.shape) == 1:
+        #     in_range = np.tile(in_range, 6)
+        # if len(out_range.shape) == 1:
+        #     out_range = np.tile(out_range, 6)
+        
+        assert(vals.shape[0] == in_range.shape[0] == out_range.shape[0])
+        assert(len(vals.shape) == 1)
+        assert(2 == in_range.shape[1] == out_range.shape[1])
+        in_range_centre = (in_range[:, 1] + in_range[:, 0]) / 2
+        in_range_bounds= in_range[:, 1] - in_range[:, 0]
+
+        out_range_centre = (out_range[:, 1] + out_range[:, 0]) / 2
+        out_range_bounds= out_range[:, 1] - out_range[:, 0]
+
+        return (vals - in_range_centre) / in_range_bounds * out_range_bounds + out_range_centre
+
     def render(self, show_sites=False):
-        self.renderer.update_scene(self.data, self.camera, self.voption)
+        camera = mujoco.MjvCamera()
+        # mujoco.mjv_defaultFreeCamera(self.model, camera)
+        camera.distance = 0.3
+        camera.elevation = -15
+        camera.azimuth = -130
+        # camera.lookat = (0.3, 0.3, 0.1)
+
+        camera.lookat = self.data.site('end_effector').xpos
+
+        camera2 = mujoco.MjvCamera()
+        # mujoco.mjv_defaultFreeCamera(self.model, camera2)
+        camera2.distance = 0.5
+        camera2.elevation = -15
+        camera2.azimuth = 130
+        camera2.lookat = (0.2, 0.2, 0.0)
+        # camera2.lookat = self.data.site('end_effector').xpos
+        self.renderer.update_scene(self.data, camera, self.voption)
+
         return self.renderer.render()
 
     # def _render(self, visualize=False):
@@ -223,35 +289,144 @@ class UfactoryLite6Env(gym.Env):
         # return observation, info
 
     def step(self, action):
-        assert action.ndim == 1
+        # assert action.ndim == 1
         # TODO(rcadene): add info["is_success"] and info["success"] ?
-        action.
-
-        mujoco.mj_step(self.model, self.data)
+        self.data.ctrl[:6] = action["qpos"]
+        self.data.ctrl[6] = self.gripper_action_to_force(action["gripper"])
+        
+        timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
+        for i in range(timesteps_per_frame):
+            mujoco.mj_step(self.model, self.data)
         observation = self._get_observation()
         # _, reward, _, raw_obs = self._env.step(action)
-        reward = 0
+        reward = self.task.get_reward(self.model, self.data)
         terminated = False
         truncated = False
         info = {}
 
         # TODO(rcadene): add an enum
-        # terminated = is_success = reward == 4
+        terminated = is_success = reward == self.task.max_reward
 
-        # info = {"is_success": is_success}
-
-        # observation = self._format_raw_obs(raw_obs)
+        info = {"is_success": is_success}
 
         # truncated = False
         return observation, reward, terminated, truncated, info
     
     def _get_observation(self):
-        pos = self.data.site('attachment_site').xpos
-        quat = np.empty(4)
-        mujoco.mju_mat2Quat(quat, self.data.site('attachment_site').xmat)
-        observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
+        if self.obs_type == "pixels_state":
+          qpos = self.data.qpos[:6]
+          gripper = int(self.data.qpos[6])
+          observation =  {"state": {"qpos": qpos, "gripper": gripper}, "pixels": self.render()}
+
+        else:
+          raise NotImplementedError()
+          observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
         return observation
         
 
-    def close(self):
-        pass
+    def solve_ik(self, pos, quat):
+        """
+        Solve for an end effector pose, return joint angles
+        """
+        # TODO: check if necessary/some way of doing this without the overhead of deepcopying all the data
+        data = copy.deepcopy(self.data)
+        x0 = self.data.qpos[:6]
+
+
+        ik_target = lambda x: self.ik(x, pos=pos, quat=quat,
+                                reg_target=self.data.qpos[:6])
+        # ik_target = lambda x: ik(x, pos=pos, quat=quat, radius=0.05, reg=.1)
+        x, _ = minimize.least_squares(x0, ik_target, self.bounds,
+                                    jacobian=self.ik_jac,
+                                    verbose=0)
+        self.data = data
+        return x
+
+    def ik(self, x, pos, quat, radius=0.04, reg=1e-3, reg_target=None, ref_frame='end_effector'):
+        """Residual for inverse kinematics.
+
+        Args:
+            x: numpy column vector of joint angles.
+            pos: target position for the end effector.
+            quat: target orientation for the end effector.
+            radius: scaling of the 3D cross.
+
+        Returns:
+            The residual of the Inverse Kinematics task.
+        """
+
+        # Move the mocap body to the target
+        id = self.model.body('target').mocapid
+        self.data.mocap_pos[id] =  pos
+        self.data.mocap_quat[id] = quat
+
+        res = []
+        # For batched operation, each column can be a different x
+        for i in range(x.shape[1]):
+            # Forward kinematics for given state
+            self.data.qpos[:6] = x[:, i]
+            mujoco.mj_kinematics(self.model, self.data)
+
+            # Position residual
+            res_pos = self.data.site(ref_frame).xpos - self.data.site('target').xpos
+            # print(self.data.site(ref_frame).xpos)
+            
+            # Get the ref frame orientation (convert from rotation matrix to quaternion)
+            ref_quat = np.empty(4)
+            mujoco.mju_mat2Quat(ref_quat, self.data.site(ref_frame).xmat)
+
+            # Target quat, exploit the fact that the site is aligned with the body.
+            target_quat = self.data.body('target').xquat
+
+            # Orientation residual: quaternion difference.
+            res_quat = np.empty(3)
+            mujoco.mju_subQuat(res_quat, target_quat, ref_quat)
+            res_quat *= radius
+
+            res_reg = reg * (x[:, i] - reg_target)
+            
+            res_i = np.hstack((res_pos, res_quat, res_reg))
+            res.append(np.atleast_2d(res_i).T)
+        
+        return np.hstack(res)
+    
+    def ik_jac(self, x, res=None, radius=0.04, reg=1e-3, ref_frame='end_effector'):
+        """Analytic Jacobian of inverse kinematics residual
+
+        Args:
+            x: joint angles.
+            res: least_squares() passes the value of the residual at x which is sometimes useful, but we don't need it here.
+            radius: scaling of the 3D cross.
+
+        Returns:
+            The Jacobian of the Inverse Kinematics task.
+            (3 + 3 + nv)  * nv
+        """
+        mujoco.mj_kinematics(self.model, self.data)
+        mujoco.mj_comPos(self.model, self.data) #calculate CoM position
+
+        # Get end-effector site Jacobian.
+        jac_pos = np.empty((3, self.model.nv))
+        jac_quat = np.empty((3, self.model.nv))
+        mujoco.mj_jacSite(self.model, self.data, jac_pos, jac_quat, self.data.site(ref_frame).id)
+        jac_pos = jac_pos[:, :self.dof]
+        jac_quat = jac_quat[:, :self.dof]
+
+        # Get the ref frame orientation (convert from rotation matrix to quaternion)
+        ref_quat = np.empty(4)
+        mujoco.mju_mat2Quat(ref_quat, self.data.site(ref_frame).xmat)
+        
+        # Get Deffector, the 3x3 Jacobian for the orientation difference
+        target_quat = self.data.body('target').xquat
+        Deffector = np.empty((3, 3))
+        mujoco.mjd_subQuat(target_quat, ref_quat, None, Deffector)
+
+        # Rotate into target frame, multiply by subQuat Jacobian, scale by radius.
+        target_mat = self.data.site('target').xmat.reshape(3, 3)
+        mat =  Deffector.T @ target_mat.T
+        jac_quat = radius * mat @ jac_quat
+
+        # Regularization Jacobian
+        jac_reg = reg * np.eye(self.dof)
+
+        return np.vstack((jac_pos, jac_quat, jac_reg))
