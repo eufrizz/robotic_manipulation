@@ -80,10 +80,7 @@
   </asset>
 
   <worldbody>
-    <!-- Scene objects for visualisation -->
-    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
-
+    
     <body name="link_base" childclass="lite6">
       <inertial pos="-0.00829545 3.26357e-05 0.0631195" mass="1.65394" diaginertia="0 0 0"/>
       <geom class="visual" mesh="link_base"/>
@@ -152,6 +149,10 @@
       </body>
     </body>
 
+    <!-- Scene objects for visualisation -->
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+
     <!-- Free floating target body to visualise target/goal pose, with rectangular prism ends for distinction-->
     <body name="target" pos=".3 .3 .3" quat="1 0 0 0" mocap="true">
       <site name="target" group="2"/>
@@ -177,7 +178,4 @@
     <joint joint1="gripper_left_finger" joint2="gripper_right_finger" polycoef="0 -1 0 0 0"/>
   </equality>
 
-  <!-- <keyframe>
-    <key name="home" qpos="0 0 1.57 0 1.57 0" ctrl="0 0 1.57 0 1.57 0"/>
-  </keyframe> -->
 </mujoco>
