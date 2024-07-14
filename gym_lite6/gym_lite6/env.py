@@ -31,10 +31,8 @@ class UfactoryLite6Env(gym.Env):
         xml_file: str = str(MODEL_DIR/"cube_pickup.xml"),
         obs_type="pixels_pose",
         render_mode="rgb_array",
-        observation_width: int =640,
-        observation_height: int=480,
-        visualization_width: int=640,
-        visualization_height: int=480,
+        visualization_width: int=244,
+        visualization_height: int=244,
     ):
         # xml_file = MODEL_DIR/"lite6_viz.xml"
         super().__init__()
@@ -43,7 +41,7 @@ class UfactoryLite6Env(gym.Env):
         self.data = mujoco.MjData(self.model)
         # Separate data to do IK with that doesn't intefere with the sim
         self.ik_data = mujoco.MjData(self.model)
-        self.renderer = mujoco.Renderer(self.model)
+        self.renderer = mujoco.Renderer(self.model, height=visualization_height, width=visualization_width)
         self.dof = 6
         
 
@@ -57,8 +55,6 @@ class UfactoryLite6Env(gym.Env):
         self.task = task
         self.obs_type = obs_type
         self.render_mode = render_mode
-        self.observation_width = observation_width
-        self.observation_height = observation_height
         self.visualization_width = visualization_width
         self.visualization_height = visualization_height
 
@@ -68,6 +64,21 @@ class UfactoryLite6Env(gym.Env):
         self.external_camera.elevation = -30
         self.external_camera.azimuth = -130
         self.external_camera.lookat = (0.3, 0.3, 0.2)
+        
+        # TODO: Move cameras to XML
+        self.top_camera = mujoco.MjvCamera()
+        # mujoco.mjv_defaultFreeCamera(self.model, self.top_camera)
+        self.top_camera.distance = 0.6
+        self.top_camera.elevation = -90
+        self.top_camera.azimuth = 0
+        self.top_camera.lookat = (0.3, 0, 0.2)
+
+        self.side_camera = mujoco.MjvCamera()
+        # mujoco.mjv_defaultFreeCamera(self.model, self.side_camera)
+        self.side_camera.distance = 1
+        self.side_camera.elevation = 0
+        self.side_camera.azimuth = 180
+        self.side_camera.lookat = (0, 0, 0.1)
 
         self.ego_camera = mujoco.MjvCamera()
         # mujoco.mjv_defaultFreeCamera(self.model, self.ego_camera)
@@ -90,7 +101,7 @@ class UfactoryLite6Env(gym.Env):
                     "image": spaces.Box(
                         low=0,
                         high=255,
-                        shape=(self.observation_height, self.observation_width, 3),
+                        shape=(self.visualization_height, self.visualization_width, 3),
                         dtype=np.uint8,
                     )
                 }
@@ -101,7 +112,7 @@ class UfactoryLite6Env(gym.Env):
                   "pixels": spaces.Box(
                       low=0,
                       high=255,
-                      shape=(self.observation_height, self.observation_width, 3),
+                      shape=(self.visualization_height, self.visualization_width, 3),
                       dtype=np.uint8,
                   ),
                   "state": spaces.Dict(
@@ -123,7 +134,7 @@ class UfactoryLite6Env(gym.Env):
                 "pixels": spaces.Box(
                     low=0,
                     high=255,
-                    shape=(self.observation_height, self.observation_width, 3),
+                    shape=(self.visualization_height, self.visualization_width, 3),
                     dtype=np.uint8,
                 ),
                   "state": spaces.Dict(
@@ -175,7 +186,9 @@ class UfactoryLite6Env(gym.Env):
         """
         map from joint bounds to (-1, 1)
         """
-        assert(qpos.shape[0] == 6)
+        if len(qpos.shape) == 1:
+            qpos = np.atleast_2d(qpos)
+        assert(qpos.shape[1] == 6), qpos
         bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
         bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
         return (qpos - bounds_centre) * 2.0 / bounds_range
@@ -184,7 +197,9 @@ class UfactoryLite6Env(gym.Env):
         """
         map from (-1, 1) to joint bounds
         """
-        assert(qpos.shape[0] == 6)
+        if len(qpos.shape) == 1:
+            qpos = np.atleast_2d(qpos)
+        assert(qpos.shape[1] == 6), qpos
         bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
         bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
         return (qpos - bounds_centre) /2.0 * bounds_range
@@ -217,8 +232,10 @@ class UfactoryLite6Env(gym.Env):
         return (vals - in_range_centre) / in_range_bounds * out_range_bounds + out_range_centre
 
     def render(self, show_sites=False):
-        # self.ego_camera.lookat = self.data.site('end_effector').xpos
-        self.renderer.update_scene(self.data, self.external_camera, self.voption)
+        self.ego_camera.lookat = self.data.site('end_effector').xpos
+
+        # self.renderer.update_scene(self.data, self.external_camera, self.voption)
+        self.renderer.update_scene(self.data, self.side_camera, self.voption)
 
         return self.renderer.render()
 
@@ -227,12 +244,12 @@ class UfactoryLite6Env(gym.Env):
     #     width, height = (
     #         (self.visualization_width, self.visualization_height)
     #         if visualize
-    #         else (self.observation_width, self.observation_height)
+    #         else (self.visualization_width, self.visualization_height)
     #     )
     #     # if mode in ["visualize", "human"]:
     #     #     height, width = self.visualize_height, self.visualize_width
     #     # elif mode == "rgb_array":
-    #     #     height, width = self.observation_height, self.observation_width
+    #     #     height, width = self.visualization_height, self.visualization_width
     #     # else:
     #     #     raise ValueError(mode)
     #     # TODO(rcadene): render and visualizer several cameras (e.g. angle, front_close)
@@ -256,17 +273,6 @@ class UfactoryLite6Env(gym.Env):
         # )
         # return env
 
-    # def _format_raw_obs(self, raw_obs):
-    #     if self.obs_type == "state":
-    #         raise NotImplementedError()
-    #     elif self.obs_type == "pixels":
-    #         obs = {"top": raw_obs["images"]["top"].copy()}
-    #     elif self.obs_type == "pixels_agent_pos":
-    #         obs = {
-    #             "pixels": {"top": raw_obs["images"]["top"].copy()},
-    #             "agent_pos": raw_obs["qpos"],
-    #         }
-    #     return obs
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -358,7 +364,7 @@ class UfactoryLite6Env(gym.Env):
 
         x0 = self.data.qpos[:6]
 
-        ik_target = lambda x: self.ik(x, pos=pos, quat=quat,
+        ik_target = lambda x: self.ik(x, pos=pos, quat=quat, radius=0.5,
                                 reg_target=x0, reg=0.1)
         x, _ = minimize.least_squares(x0, ik_target, self.bounds,
                                     jacobian=self.ik_jac,
