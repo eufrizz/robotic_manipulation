@@ -174,6 +174,7 @@ class UfactoryLite6Env(gym.Env):
     def force_to_gripper_action(self, force):
         """
         Map (-force limit, force limit) to discrete (-1, 1)
+        TODO: Should this be (0, 1)?
         """
         if force < 1e-3:
             return -1
@@ -185,6 +186,7 @@ class UfactoryLite6Env(gym.Env):
     def normalize_qpos(self, qpos):
         """
         map from joint bounds to (-1, 1)
+        TODO: Should this be (0, 1)?
         """
         if len(qpos.shape) == 1:
             qpos = np.atleast_2d(qpos)
