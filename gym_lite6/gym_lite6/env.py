@@ -191,8 +191,8 @@ class UfactoryLite6Env(gym.Env):
         if len(qpos.shape) == 1:
             qpos = np.atleast_2d(qpos)
         assert(qpos.shape[1] == 6), qpos
-        bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
-        bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
+        bounds_centre = torch.from_numpy((self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2)
+        bounds_range = torch.from_numpy((self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0]))
         return (qpos - bounds_centre) * 2.0 / bounds_range
     
     def unnormalize_qpos(self, qpos):

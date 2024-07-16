@@ -280,6 +280,19 @@ To install realsense ROS there were issues.
 Seems that the OpenCV installation fails to have CUDA anyway?
 
 
+### PyTorch with CUDA
+Find the release you want here:
+https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform-release-notes/pytorch-jetson-rel.html#pytorch-jetson-rel
+
+Then find the actual link to the whl here:
+https://developer.download.nvidia.com/compute/redist/jp/
+
+Then copy the link and install like this:
+pip3 install --no-cache hpip3 install --no-cache pip3 install --no-cache https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+07cecf4168.nv24.05.14710581-cp310-cp310-linux_aarch64.whl
+
+torch 2.4.0 worked, but there was no corresponding torchvision release, it would have to be installed from source. Tried this but seems also have to build torch from source.
+Found the released torch 2.3.0 binaries and torchivision 0.18.0 here: https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+
 ## ROS MacOS
 Docker on macOS can't do net=host, you can only expose specified ports. It was really hard to find what ports DDS used (for ROS2 discovery), and I spent a bit of time playing with it but with no result, so I decided to forego docker. EDIT: I also didn't set ROS_DOMAIN_ID, so that could have screwed it up altogether
 
@@ -319,3 +332,20 @@ colcon build places install and build in the folder where you first build (if se
 clang++ -o load_mujoco ../src/load_mujoco_model.cpp -L/usr/local/lib -I/usr/local/include/mujoco -lmujoco.3.1.5
 ```
 May make more sense to just reference the headers and lib in in /Applications/Mujoco/Contents... but I installed them anyway
+
+
+## Training on Orin
+There's a big data loading bottleneck, where it takes 1-3s to load a batch, even with 4 workers.
+I tried moving the dataset to GPU, with dataset.format(device="cuda"), but it doesn't seem to actually load it to there. Even so, I thought that the preprocessing would go much faster with parallelisation, and I made all the preprocessing vectorized, but it simply shot the GPU usage to 100% and it stayed there for a minute, not even being able to load the first batch. Not sure what's going on.
+
+There is a warning about the preprocess function not being hashable, thus the caching would not work.
+ - Seems this was due to accessing object from the mujoco environment (e.g. env.unwrapped.normalize_qpos)
+ - Even with this fixed, still getting sawtooth slow loading, no increase
+
+Passing keep_in_memory=True to .map() seems to successfully load it into memory, but in the training loop, the memory shoots through the roof and crashes the kernel. It shouldn't need any more memory??
+
+Running the preprocessing is quick - each batch of 1000 takes 0.07s, but loading each batch takes around 7.3s
+According to getsizeof, each batch is 232 bytes, but the image data alone is definitely way more than this (3x224x224=150kB, still small tho)
+
+Managed to load dataset into ram with keep_in_memory=True, but still took about the same amount of time and exhibited the saw pattern
+Next guess: the data is saved as numpy, and it has to convert it to pytorch on the fly?
