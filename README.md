@@ -348,4 +348,3 @@ Running the preprocessing is quick - each batch of 1000 takes 0.07s, but loading
 According to getsizeof, each batch is 232 bytes, but the image data alone is definitely way more than this (3x224x224=150kB, still small tho)
 
 Managed to load dataset into ram with keep_in_memory=True, but still took about the same amount of time and exhibited the saw pattern
-Next guess: the data is saved as numpy, and it has to convert it to pytorch on the fly?

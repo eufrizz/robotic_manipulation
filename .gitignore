@@ -179,3 +179,5 @@ resource/
 runs
 
 /dataset/
+
+ckpts/
