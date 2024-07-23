@@ -5,11 +5,6 @@ import pytest
 
 
 
-# @pytest.mark.parametrize("action_type", [
-#     "qpos", "qvel"
-# ])
-
-
 class TestLite6Env:
     @pytest.fixture(params=[{"action_type":"qpos"}, {"action_type":"qvel"}])
     def env(self, request):
