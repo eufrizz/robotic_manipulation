@@ -67,24 +67,20 @@ class MLPPolicy(torch.nn.Module):
 # %%
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
 
-policy = MLPPolicy([128, 128, 128]).to(device)
+policy = MLPPolicy([64, 64]).to(device)
 
 # %%
 class Trainer:
-  def __init__(self, env) -> None:
+  def __init__(self, params) -> None:
     # self.env = env # This breaks caching of preprocess_data
-    jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
-    jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
-    self.bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
-    self.bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
 
-    
-  
+    self.params = params
+
   def normalize_qpos(self, qpos):
-    return (qpos - self.bounds_centre) / self.bounds_range + 0.5
+    return (qpos - self.params["normalize_qpos"]["bounds_centre"]) / self.params["normalize_qpos"]["bounds_range"] + 0.5
 
   def unnormalize_qpos(self, qpos):
-    return (qpos - 0.5) * self.bounds_range + self.bounds_centre
+    return (qpos - 0.5) * self.params["normalize_qpos"]["bounds_range"] + self.params["normalize_qpos"]["bounds_centre"]
   
   def embed_gripper(self, gripper):
     """
@@ -105,13 +101,18 @@ class Trainer:
     """
     out = {}
     
-    observation_qpos_normalised = self.normalize_qpos(torch.tensor(batch["observation.state.qpos"], dtype=torch.float32))
-    observation_gripper = self.embed_gripper(torch.tensor(batch["observation.state.gripper"], dtype=int)).to(torch.float32)
-    out["preprocessed.observation.state"] = torch.hstack((observation_qpos_normalised, observation_gripper))
+    observation_qpos = torch.tensor(batch["observation.state.qpos"], dtype=torch.float32)
+    action_qpos = torch.tensor(batch["action.qpos"], dtype=torch.float32)
 
-    action_qpos_normalised = self.normalize_qpos(torch.tensor(batch["action.qpos"], dtype=torch.float32))
+    observation_gripper = self.embed_gripper(torch.tensor(batch["observation.state.gripper"], dtype=int)).to(torch.float32)
     action_gripper = self.embed_gripper(torch.tensor(batch["action.gripper"], dtype=int)).to(torch.float32)
-    out["preprocessed.action.state"] = torch.hstack((action_qpos_normalised, action_gripper))
+
+    if self.params["normalize_qpos"] is not False:
+      observation_qpos = self.normalize_qpos(observation_qpos)
+      action_qpos = self.normalize_qpos(action_qpos)
+
+    out["preprocessed.observation.state"] = torch.hstack((observation_qpos, observation_gripper))
+    out["preprocessed.action.state"] = torch.hstack((action_qpos, action_gripper))
     
     # Convert to float32 with image from channel first in [0,255]
     tf = torchvision.transforms.ToTensor()
@@ -138,9 +139,11 @@ class Trainer:
       while not done and len(frames) < 300:
         # Prepare observation for the policy running in Pytorch
         # Get qpos in range (-1, 1), gripper is already in range (-1, 1)
-        qpos_normalised = self.normalize_qpos(torch.from_numpy(numpy_observation["state"]["qpos"]).unsqueeze(0))
+        qpos = torch.from_numpy(numpy_observation["state"]["qpos"]).unsqueeze(0)
         gripper = self.embed_gripper(torch.tensor(numpy_observation["state"]["gripper"]))
-        state = torch.hstack((qpos_normalised, gripper))
+        if self.params["normalize_qpos"] is not False:
+          qpos = self.normalize_qpos(qpos)
+        state = torch.hstack((qpos, gripper))
         image = torch.from_numpy(numpy_observation["pixels"])
         
         # Convert to float32 with image from channel first in [0,255]
@@ -161,8 +164,13 @@ class Trainer:
         with torch.inference_mode():
           raw_action = policy.predict(state, image).to("cpu")
         
-        action["qpos"] = self.unnormalize_qpos(raw_action[:, :6]).flatten().numpy()
+        action["qpos"] = raw_action[:, :6]
+        if self.params["normalize_qpos"] is not False:
+          action["qpos"] = self.unnormalize_qpos(action["qpos"])
+        
+        action["qpos"] = action["qpos"].flatten().numpy()
         action["gripper"] = self.decode_gripper(raw_action[:, 6:8]).item()
+        
         # print(action)
         # numpy_action = np.hstack((action["qpos"], action["gripper"]))
 
@@ -182,6 +190,12 @@ class Trainer:
       return avg_reward, frames
 
 if __name__ == '__main__':
+  from datasets import load_from_disk
+  from torch.utils.data import DataLoader
+  from tqdm import tqdm
+  from torch.utils.tensorboard import SummaryWriter
+  import datetime
+  from pathlib import Path
 
   # %%
   task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
@@ -193,35 +207,33 @@ if __name__ == '__main__':
   )
   observation, info = env.reset()
   # media.show_image(env.render(), width=400, height=400)
-
-  trainer = Trainer(env)
-
-  # %%
-  from datasets import load_from_disk
-  from torch.utils.data import DataLoader
-  from tqdm import tqdm
-  from torch.utils.tensorboard import SummaryWriter
-  import datetime
   
+  params = {}
+
+  jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
+  jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
+  bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
+  bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
+  # params["normalize_qpos"] = {"bounds_centre": bounds_centre, "bounds_range": bounds_range}
+  params["normalize_qpos"] = False
+
+  trainer = Trainer(params)
+
   dataset = load_from_disk("../dataset/scripted_trajectories_50_2024-07-14_14-25-22.hf")
   dataset.set_transform(trainer.preprocess_data)
-
-
-  # %%
-  dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=1)
+  dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=2)
 
   optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
-  # loss_fn = torch.nn.CrossEntropyLoss()
   loss_fn = torch.nn.MSELoss()
-
 
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
   hidden_layer_dims = '_'.join([str(x.out_features) for x in policy.actor[:-1] if 'out_features' in x.__dict__])
   OUTPUT_FOLDER=f'../ckpts/lite6_pick_place_h{hidden_layer_dims}_{curr_time}'
+  Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
   writer = SummaryWriter(log_dir=f"../runs/lite6_pick_place/{curr_time}")
 
-  n_epoch = 50
+  n_epoch = 20
   step = 0
   for epoch in range(n_epoch):
     policy.train()
@@ -262,7 +274,7 @@ if __name__ == '__main__':
       policy.eval()
       print(f"Epoch: {epoch+1}/{n_epoch}, steps: {step}, loss: {loss.item()}")
       avg_reward, frames = trainer.evaluate_policy(env, policy, 5)
-      media.write_video(OUTPUT_FOLDER + f"epoch_{epoch}.mp4", frames, fps=env.metadata["render_fps"])
+      media.write_video(OUTPUT_FOLDER + f"/epoch_{epoch}.mp4", frames, fps=env.metadata["render_fps"])
       print("avg reward: ", avg_reward)
       writer.add_scalar("Reward/val", avg_reward, step)
       # _, frames = evaluate_policy(policy, env, 1, visualise=True)
@@ -274,6 +286,7 @@ if __name__ == '__main__':
     if epoch % 10 == 0 or epoch == n_epoch-1:
       torch.save({
               'epoch': epoch,
+              'params': params,
               'policy_state_dict': policy.state_dict(),
               'optimizer_state_dict': optimizer.state_dict(),
               'loss': loss,

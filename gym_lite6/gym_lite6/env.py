@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 import copy
 
-MODEL_DIR = Path(__file__).parent.parent.parent.resolve() / "models"  # note: absolute path
+MODEL_DIR = Path(__file__).parent.parent.resolve() / "models"  # note: absolute path
 
 def compare(var1, var2):
     for attr in dir(var1):
@@ -29,7 +29,8 @@ class UfactoryLite6Env(gym.Env):
         task,
         # xml_file: str = str(MODEL_DIR/"lite6_viz.xml"),
         xml_file: str = str(MODEL_DIR/"cube_pickup.xml"),
-        obs_type="pixels_pose",
+        obs_type="pixels_state",
+        action_type="qpos",
         render_mode="rgb_array",
         visualization_width: int=244,
         visualization_height: int=244,
@@ -54,6 +55,7 @@ class UfactoryLite6Env(gym.Env):
 
         self.task = task
         self.obs_type = obs_type
+        self.action_type = action_type
         self.render_mode = render_mode
         self.visualization_width = visualization_width
         self.visualization_height = visualization_height
@@ -88,6 +90,7 @@ class UfactoryLite6Env(gym.Env):
 
 
         if self.obs_type == "state":
+            raise NotImplementedError()
             # Pos and vel? Originally unimplemented
             self.observation_space = spaces.Dict(
               {
@@ -96,6 +99,7 @@ class UfactoryLite6Env(gym.Env):
               }
             )
         elif self.obs_type == "pixels":
+            raise NotImplementedError()
             self.observation_space = spaces.Dict(
                 {
                     "image": spaces.Box(
@@ -107,6 +111,7 @@ class UfactoryLite6Env(gym.Env):
                 }
             )
         elif self.obs_type == "pixels_pose":
+            raise NotImplementedError()
             self.observation_space = spaces.Dict(
                 {
                   "pixels": spaces.Box(
@@ -139,7 +144,8 @@ class UfactoryLite6Env(gym.Env):
                 ),
                   "state": spaces.Dict(
                     {
-                      "qpos": spaces.Box(low=-1, high=1, shape=(6,), dtype=np.float64),
+                      "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], shape=(6,), dtype=np.float64),
+                      "qvel": spaces.Box(low=-100, high=100, shape=(6,), dtype=np.float64),
                       "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                     }
                   ),
@@ -148,15 +154,24 @@ class UfactoryLite6Env(gym.Env):
         else:
           raise KeyError(f"Invalid observation type {self.obs_type}")
 
-        # Pos and quaternion
-        self.action_space = spaces.Dict(
-            {
-              # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
-              # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
-              "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], dtype=np.float64),
-              "gripper": spaces.Discrete(3, start=-1) # release, off, grip
-            }
-        )
+        if self.action_type == "qpos":
+            self.action_space = spaces.Dict(
+                {
+                # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
+                # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
+                "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], dtype=np.float64),
+                "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+                }
+            )
+        elif self.action_type == "qvel":
+            self.action_space = spaces.Dict(
+                {
+                "qvel": spaces.Box(low=-100, high=100, dtype=np.float64), # Arbitrarily high bounds
+                "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+                }
+            )
+        else:
+          raise KeyError(f"Invalid action type {self.action_type}")
 
         self.object_space = spaces.Box(low=np.array([0.1, -0.4, 0, 0, 0, 0, 0]), high=np.array([0.4, 0.4, 0, 1, 1, 1, 1]), dtype=np.float32)
 
@@ -176,7 +191,7 @@ class UfactoryLite6Env(gym.Env):
         Map (-force limit, force limit) to discrete (-1, 1)
         TODO: Should this be (0, 1)?
         """
-        if force < 1e-3:
+        if force < -1e-3:
             return -1
         elif force > 1e-3:
             return 1
@@ -276,26 +291,36 @@ class UfactoryLite6Env(gym.Env):
         # return env
 
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, options=None, state=None):
+        """
+        If state is specified, it directly sets the mujoco qpos. Otherwise it is reset to a random state
+        """
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
 
-        self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
-        # gripper 6,7
-        box_pose = self.object_space.sample()
-        # Drop from height to avoid intersection with ground
-        self.data.qpos[8:11] = box_pose[:3] + np.array([0, 0, 0.01])
-        # Quaternion pose - normalise
-        z_rot = np.random.rand()
-        quat = np.array([1-z_rot, 0, 0, z_rot])
-        self.data.qpos[11:] = quat / np.linalg.norm(quat)
-        mujoco.mj_forward(self.model, self.data)
-        
-        # Ensure robot is not self-intersecting
-        # TODO: don't hardcode geoms
-        while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 7))):
-            self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
+        if state is not None:
+            self.data.qpos = state
             mujoco.mj_forward(self.model, self.data)
+
+        else:
+            mujoco.mj_resetData(self.model, self.data)
+
+            self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
+            # gripper 6,7
+            box_pose = self.object_space.sample()
+            # Drop from height to avoid intersection with ground
+            self.data.qpos[8:11] = box_pose[:3] + np.array([0, 0, 0.01])
+            # Quaternion pose - normalise
+            z_rot = np.random.rand()
+            quat = np.array([1-z_rot, 0, 0, z_rot])
+            self.data.qpos[11:] = quat / np.linalg.norm(quat)
+            mujoco.mj_forward(self.model, self.data)
+        
+            # Ensure robot is not self-intersecting
+            # TODO: don't hardcode geoms
+            while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 7))):
+                self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
+                mujoco.mj_forward(self.model, self.data)
 
 
         observation = self._get_observation()
@@ -303,30 +328,16 @@ class UfactoryLite6Env(gym.Env):
 
         return observation, info
 
-        # # TODO(rcadene): how to seed the env?
-        # if seed is not None:
-        #     self._env.task.random.seed(seed)
-        #     self._env.task._random = np.random.RandomState(seed)
-
-        # # TODO(rcadene): do not use global variable for this
-        # if "transfer_cube" in self.task:
-        #     BOX_POSE[0] = sample_box_pose(seed)  # used in sim reset
-        # elif "insertion" in self.task:
-        #     BOX_POSE[0] = np.concatenate(sample_insertion_pose(seed))  # used in sim reset
-        # else:
-        #     raise ValueError(self.task)
-
-        # raw_obs = self._env.reset()
-
-        # observation = self._format_raw_obs(raw_obs.observation)
-
-        # info = {"is_success": False}
-        # return observation, info
-
     def step(self, action):
         # assert action.ndim == 1
         # TODO(rcadene): add info["is_success"] and info["success"] ?
-        self.data.ctrl[:6] = action["qpos"]
+        if self.action_type == "qpos":
+            self.data.ctrl[:6] = action["qpos"]
+        elif self.action_type == "qvel":
+            self.data.ctrl[:6] = action["qvel"]
+        else:
+          raise NotImplementedError(f"Invalid action type {self.action_type}")
+        
         self.data.ctrl[6] = self.gripper_action_to_force(action["gripper"])
         
         timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
@@ -349,9 +360,10 @@ class UfactoryLite6Env(gym.Env):
     
     def _get_observation(self):
         if self.obs_type == "pixels_state":
-          qpos = self.data.qpos[:6]
+          qpos = self.data.qpos[:self.dof]
+          qvel = self.data.qvel[:self.dof]
           gripper = self.force_to_gripper_action(self.data.actuator('gripper').ctrl)
-          observation =  {"state": {"qpos": qpos, "gripper": gripper}, "pixels": self.render()}
+          observation =  {"state": {"qpos": qpos, "qvel": qvel, "gripper": gripper}, "pixels": self.render()}
 
         else:
           raise NotImplementedError()

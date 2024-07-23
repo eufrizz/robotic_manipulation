@@ -6,6 +6,6 @@ file = DIR/"lite6_viz.xml"
 model = mujoco.MjModel.from_xml_path(str(file))
 print(f"Loaded {file}")
 
-file = DIR/"cube_pickup.xml"
-model = mujoco.MjModel.from_xml_path(str(file))
-print(f"Loaded {file}")
+# file = DIR/"cube_pickup.xml"
+# model = mujoco.MjModel.from_xml_path(str(file))
+# print(f"Loaded {file}")
