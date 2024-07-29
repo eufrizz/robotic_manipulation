@@ -80,12 +80,13 @@ class ScriptedPickupPolicy(object):
       else:
         action["gripper"] = 0
 
-      pos_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"] - ref_pos)
+      pos_xy_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"][:2] - ref_pos[:2])
       res_quat = np.empty(3)
       mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
       quat_err = np.linalg.norm(res_quat)
 
-      pos_reached = pos_err < 5e-3
+      # TODO: gravity compensation for tighter tolerances here, including Z
+      pos_reached = pos_xy_err < 5e-3
       quat_reached = quat_err < 5e-3
       # print(pos_err, quat_err)
 

@@ -4,7 +4,7 @@ import mujoco
 from mujoco import minimize
 import numpy as np
 from pathlib import Path
-import copy
+from copy import deepcopy
 
 MODEL_DIR = Path(__file__).parent.parent.resolve() / "models"  # note: absolute path
 
@@ -348,13 +348,11 @@ class UfactoryLite6Env(gym.Env):
         for i in range(timesteps_per_frame):
             mujoco.mj_step(self.model, self.data)
         observation = self._get_observation()
-        # _, reward, _, raw_obs = self._env.step(action)
         reward = self.task.get_reward(self.model, self.data)
         terminated = False
         truncated = False
         info = {}
 
-        # TODO(rcadene): add an enum
         terminated = is_success = reward == self.task.max_reward
 
         info = {"is_success": is_success}
@@ -364,9 +362,9 @@ class UfactoryLite6Env(gym.Env):
     
     def _get_observation(self):
         if self.obs_type == "pixels_state":
-          qpos = self.data.qpos[:self.dof]
-          qvel = self.data.qvel[:self.dof]
-          gripper = self.force_to_gripper_action(self.data.actuator('gripper').ctrl)
+          qpos = deepcopy(self.data.qpos[:self.dof])
+          qvel = deepcopy(self.data.qvel[:self.dof])
+          gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
           observation =  {"state": {"qpos": qpos, "qvel": qvel, "gripper": gripper}, "pixels": self.render()}
 
         else:
@@ -387,7 +385,7 @@ class UfactoryLite6Env(gym.Env):
         ik_jac_target = lambda x, res: self.ik_jac(x, radius=0.5, reg=0.01)
 
         x, _ = minimize.least_squares(x0, ik_target, self.bounds,
-                                    jacobian=self.ik_jac_target,
+                                    jacobian=ik_jac_target,
                                     verbose=0)
 
         return x

@@ -159,12 +159,12 @@
 
   <actuator>
     <!-- TODO: Split into position, velocity, force control groups -->
-    <position joint="joint1" group="1" class="size1" kp="2000" kv="150" ctrlrange="-6.28319 6.28319" />
-    <position joint="joint2" group="1" class="size1" kp="2000" kv="150" ctrlrange="-2.61799 2.61799" />
-    <position joint="joint3" group="1" class="size2" kp="2000" kv="150" ctrlrange="-0.061087 5.23599" />
-    <position joint="joint4" group="1" class="size2" kp="2000" kv="150" ctrlrange="-6.28319 6.28319" />
-    <position joint="joint5" group="1" class="size2" kp="2000" kv="150" ctrlrange="-2.1642 2.1642" />
-    <position joint="joint6" group="1" class="size3" kp="2000" kv="150" ctrlrange="-6.28319 6.28319" />
+    <position joint="joint1" group="1" class="size1" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
+    <position joint="joint2" group="1" class="size1" kp="8000" kv="600" ctrlrange="-2.61799 2.61799" />
+    <position joint="joint3" group="1" class="size2" kp="8000" kv="600" ctrlrange="-0.061087 5.23599" />
+    <position joint="joint4" group="1" class="size2" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
+    <position joint="joint5" group="1" class="size2" kp="8000" kv="600" ctrlrange="-2.1642 2.1642" />
+    <position joint="joint6" group="1" class="size3" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
 
     <!-- <intvelocity joint="joint1" group="2" class="size1" kp="20" kv="1" ctrlrange="-4 4" actrange="-6.28319 6.28319" />
     <intvelocity joint="joint2" group="2" class="size1" kp="20" kv="1" ctrlrange="-4 4" actrange="-2.61799 2.61799" />
