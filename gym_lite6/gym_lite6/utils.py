@@ -86,3 +86,37 @@ def screw_interp(T_start, T_end, t, end_time):
   """
   assert(t >= 0 and t <= end_time)
   return T_start @ expm(logm(invert_tf_matrix(T_start)@T_end)*s(t, end_time)[0])
+
+
+def plot_dict_of_arrays(ep_dict, x_ax, keys=None, title_prefix="", sharey=True):
+  import matplotlib.pyplot as plt
+
+  if x_ax not in ep_dict:
+    raise KeyError("x_ax must be a member of ep_dict")
+  if keys is None:
+    keys = [key for key in ep_dict.keys() if key != x_ax]
+    
+  
+  for key in keys:
+    if hasattr(ep_dict[key][0], '__iter__'):
+      len_state = len(ep_dict[key][0])
+    else:
+      len_state = 1
+    ncols = len_state; nrows= int(np.ceil(len_state/ncols))
+    plt_data = np.array(ep_dict[key])
+    fig, axs = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, sharey=sharey, figsize=(ncols*2+0.5, nrows*2+1), constrained_layout=True)
+
+    for i in range(len_state):
+      # ax = plt.subplot(int(np.ceil(len_qpos/3)), 3, i+1)
+      if len_state > 1:
+        ax = axs.flatten()[i]
+        ax.plot(ep_dict[x_ax], plt_data[:, i])
+        ax.set_title(i)
+      else:
+        ax = axs
+        ax.plot(ep_dict[x_ax], plt_data)
+
+    # fig.add_subplot(111, frameon=False)
+    plt.suptitle(f"{key}")
+    # fig.supylabel("Joint angle")
+    fig.supxlabel(x_ax)

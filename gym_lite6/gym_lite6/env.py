@@ -43,9 +43,12 @@ class UfactoryLite6Env(gym.Env):
         # Separate data to do IK with that doesn't intefere with the sim
         self.ik_data = mujoco.MjData(self.model)
         self.renderer = mujoco.Renderer(self.model, height=visualization_height, width=visualization_width)
+        # Start in position control by default
+        self.disable_actuator_group(2)
+        # These are the indexes of our joints, from the XML
+        self.joint_qpos = [0, 1, 2, 3, 4, 5]
         self.dof = 6
         
-
         self.voption = mujoco.MjvOption()
         # self.voption.frame = mujoco.mjtFrame.mjFRAME_SITE
 
@@ -144,8 +147,8 @@ class UfactoryLite6Env(gym.Env):
                 ),
                   "state": spaces.Dict(
                     {
-                      "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], shape=(6,), dtype=np.float64),
-                      "qvel": spaces.Box(low=-100, high=100, shape=(6,), dtype=np.float64),
+                      "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], shape=(6,), dtype=np.float64),
+                      "qvel": spaces.Box(low=-100, high=100, shape=(len(self.joint_qpos),), dtype=np.float64),
                       "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                     }
                   ),
@@ -159,7 +162,7 @@ class UfactoryLite6Env(gym.Env):
                 {
                 # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
                 # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
-                "qpos": spaces.Box(low=self.model.jnt_range[:6, 0], high=self.model.jnt_range[:6, 1], dtype=np.float64),
+                "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], dtype=np.float64),
                 "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                 }
             )
@@ -206,8 +209,8 @@ class UfactoryLite6Env(gym.Env):
         if len(qpos.shape) == 1:
             qpos = np.atleast_2d(qpos)
         assert(qpos.shape[1] == 6), qpos
-        bounds_centre = torch.from_numpy((self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2)
-        bounds_range = torch.from_numpy((self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0]))
+        bounds_centre = torch.from_numpy((self.model.jnt_range[self.joint_qpos, 0] + self.model.jnt_range[self.joint_qpos, 1]) / 2)
+        bounds_range = torch.from_numpy((self.model.jnt_range[self.joint_qpos, 1] - self.model.jnt_range[self.joint_qpos, 0]))
         return (qpos - bounds_centre) * 2.0 / bounds_range
     
     def unnormalize_qpos(self, qpos):
@@ -217,8 +220,8 @@ class UfactoryLite6Env(gym.Env):
         if len(qpos.shape) == 1:
             qpos = np.atleast_2d(qpos)
         assert(qpos.shape[1] == 6), qpos
-        bounds_centre = (self.model.jnt_range[:6, 0] + self.model.jnt_range[:6, 1]) / 2
-        bounds_range = (self.model.jnt_range[:6, 1] - self.model.jnt_range[:6, 0])
+        bounds_centre = (self.model.jnt_range[self.joint_qpos, 0] + self.model.jnt_range[self.joint_qpos, 1]) / 2
+        bounds_range = (self.model.jnt_range[self.joint_qpos, 1] - self.model.jnt_range[self.joint_qpos, 0])
         return (qpos - bounds_centre) /2.0 * bounds_range
     
     def map_bounds(self, vals, in_range=None, out_range=None):
@@ -228,9 +231,9 @@ class UfactoryLite6Env(gym.Env):
         if in_range is None and out_range is None:
             raise ValueError("One of in_range or out_range must be specified")
         if in_range is None:
-            in_range = self.model.jnt_range[:6]
+            in_range = self.model.jnt_range[self.joint_qpos]
         elif out_range is None:
-            out_range = self.model.jnt_range[:6]
+            out_range = self.model.jnt_range[self.joint_qpos]
         
         # if len(in_range.shape) == 1:
         #     in_range = np.tile(in_range, 6)
@@ -305,7 +308,8 @@ class UfactoryLite6Env(gym.Env):
         else:
             mujoco.mj_resetData(self.model, self.data)
 
-            self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
+            # Divide by two to get angles that are less extreme
+            self.data.qpos[:self.dof] = self.observation_space["state"]["qpos"].sample()/2
             # gripper 6,7
             box_pose = self.object_space.sample()
             # Drop from height to avoid intersection with ground
@@ -317,9 +321,9 @@ class UfactoryLite6Env(gym.Env):
             mujoco.mj_forward(self.model, self.data)
         
             # Ensure robot is not self-intersecting
-            # TODO: don't hardcode geoms
-            while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 7))):
-                self.data.qpos[:6] = self.observation_space["state"]["qpos"].sample()
+            # TODO: don't hardcode geoms. 0 is floor, 1-16 are the robot arm, 17 - 18 are gripper fingers (which may be touching)
+            while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 17))):
+                self.data.qpos[self.joint_qpos] = self.observation_space["state"]["qpos"].sample()/2
                 mujoco.mj_forward(self.model, self.data)
 
 
@@ -332,13 +336,13 @@ class UfactoryLite6Env(gym.Env):
         # assert action.ndim == 1
         # TODO(rcadene): add info["is_success"] and info["success"] ?
         if self.action_type == "qpos":
-            self.data.ctrl[:6] = action["qpos"]
+            self.data.ctrl[self.joint_actuators] = action["qpos"]
         elif self.action_type == "qvel":
-            self.data.ctrl[:6] = action["qvel"]
+            self.data.ctrl[self.joint_actuators] = action["qvel"]
         else:
           raise NotImplementedError(f"Invalid action type {self.action_type}")
         
-        self.data.ctrl[6] = self.gripper_action_to_force(action["gripper"])
+        self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
         
         timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
         for i in range(timesteps_per_frame):
@@ -376,12 +380,14 @@ class UfactoryLite6Env(gym.Env):
         Solve for an end effector pose, return joint angles
         """
 
-        x0 = self.data.qpos[:6]
+        x0 = self.data.qpos[self.joint_qpos]
 
         ik_target = lambda x: self.ik(x, pos=pos, quat=quat, radius=0.5,
-                                reg_target=x0, reg=0.1)
+                                reg_target=x0, reg=0.01)
+        ik_jac_target = lambda x, res: self.ik_jac(x, radius=0.5, reg=0.01)
+
         x, _ = minimize.least_squares(x0, ik_target, self.bounds,
-                                    jacobian=self.ik_jac,
+                                    jacobian=self.ik_jac_target,
                                     verbose=0)
 
         return x
@@ -408,7 +414,7 @@ class UfactoryLite6Env(gym.Env):
         # For batched operation, each column can be a different x
         for i in range(x.shape[1]):
             # Forward kinematics for given state
-            self.ik_data.qpos[:6] = x[:, i]
+            self.ik_data.qpos[self.joint_qpos] = x[:, i]
             mujoco.mj_kinematics(self.model, self.ik_data)
 
             # Position residual
@@ -474,3 +480,39 @@ class UfactoryLite6Env(gym.Env):
         jac_reg = reg * np.eye(self.dof)
 
         return np.vstack((jac_pos, jac_quat, jac_reg))
+    
+    def solve_dq(self, pos, quat, ref_frame='end_effector'):
+        """
+        Get dq, the error between the current pose and the desired, in state space, using damped ik.
+        """
+        jac = np.zeros((6, self.model.nv))
+        twist = np.empty(6)
+        error = np.zeros(6)
+        curr_quat = np.empty(4)
+        curr_quat_conj = np.empty(4)
+        quat_err = np.empty(4)
+        dq = np.zeros(6)
+        site_id = self.model.site(ref_frame).id
+
+        error[:3] = pos - self.data.site(site_id).xpos
+
+        # Quat error
+        mujoco.mju_mat2Quat(curr_quat, self.data.site(site_id).xmat)
+        mujoco.mju_negQuat(curr_quat_conj, curr_quat)
+        mujoco.mju_mulQuat(quat_err, quat, curr_quat_conj)
+        mujoco.mju_quat2Vel(error[3:], quat_err, 1.0)
+
+        # Get end-effector site Jacobian.
+        mujoco.mj_jacSite(self.model, self.data, jac[:3, :], jac[3:, :], site_id)
+        jac_arm = jac[:, self.joint_qpos]
+
+        diag = 1e-4 * np.eye(6) # damping
+        # Solve system of equations: J @ dq = error.
+        dq = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, error)
+        return dq
+
+    def disable_actuator_group(self, group_id):
+        # Set the bitfield
+        self.model.opt.disableactuator = 2**group_id
+        # 0 is our gripper, here we just want the robot joints
+        self.joint_actuators = [x for x in range(self.model.nu) if self.model.actuator(x).group != group_id and self.model.actuator(x).group != 0]

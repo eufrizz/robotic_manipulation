@@ -29,9 +29,7 @@ def test_load_model(model, data, renderer):
     print(model)
     print(data)
 
-def test_pos_actuators(model):
-    print([model.actuator(x) for x in range(model.nu)])
-    # print(model.actuator('gripper'))
+# def test_pos_actuators(model):
+#     print([model.actuator(x) for x in range(model.nu)])
+#     # print(model.actuator('gripper'))
 
-
-# def test_position_ctrl():

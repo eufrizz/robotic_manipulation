@@ -6,7 +6,7 @@ class ScriptedPickupPolicy(object):
   """
   Assume static object
   """
-  def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.1) -> None:
+  def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.15) -> None:
     
     self.env = env
     self.ref_name = ref_name
