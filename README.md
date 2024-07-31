@@ -348,3 +348,10 @@ Running the preprocessing is quick - each batch of 1000 takes 0.07s, but loading
 According to getsizeof, each batch is 232 bytes, but the image data alone is definitely way more than this (3x224x224=150kB, still small tho)
 
 Managed to load dataset into ram with keep_in_memory=True, but still took about the same amount of time and exhibited the saw pattern
+
+## Realsense Calibration
+Get the intrinsics with `rs-enumerate-devices -c`. The output is saved in rs-calibration.txt
+Theres a slight discrepancy between pixel size and image area in the OV2740 (RGB sensor) datasheet - 1.4e-6x1.4e-6 pixel size, image area 2.7288e-3x1.5498e-3. Multiplying pixel size by 1920x1080 resolution gives img size of 2.688e-3x1.512e-3. Assuming the difference is small gaps between pixels, so probably more accurate to go off the image area for calibration. This gives pixel size of 1.42125e-6 x 1.435e-6.
+
+To calculate FOV: FOV = 2atan(sensor_size/2*f), in x or y. f is in metres
+If using pixel units, FOV = 2atan(res/2*fp), in x or y, where fp means focal length in pixels, and res is the resolution/number of pixels

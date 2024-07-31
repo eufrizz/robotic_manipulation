@@ -1,0 +1,14 @@
+<mujoco model="d435i">
+    <default>
+    <default class="realsense_d435i_rgb_1920">
+        <!-- <camera focal="1.88e-3 1.88e-3" resolution="1920 1080" sensorsize="2.7288e-3 1.5498e-3"/> -->
+        <camera fovy="43.04" resolution="1920 1080"/>
+      </default>
+      <default class="realsense_d435i_rgb_1280">
+        <camera fovy="43.04" resolution="1280 720"/>
+      </default>
+      <default class="realsense_d435i_rgb_640">
+        <camera fovy="43.04" resolution="640 480"/>
+      </default>
+    </default>
+</mujoco>

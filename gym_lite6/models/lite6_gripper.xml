@@ -1,8 +1,8 @@
 <mujoco model="ufactory_lite6">
   <compiler angle="radian" meshdir="../../mujoco_menagerie/ufactory_lite6/assets" autolimits="true"/>
-
   <option integrator="implicitfast"/>
 
+  <include file="realsense_d435.xml"/>
   <default>
     <default class="lite6">
       <geom type="mesh"/>
@@ -78,6 +78,10 @@
     
     <body name="link_base" childclass="lite6">
       <inertial pos="-0.00829545 3.26357e-05 0.0631195" mass="1.65394" diaginertia="0 0 0"/>
+      <!-- Angled down 20 deg -->
+      <camera name="side_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.7 0 0.25" quat="0.5792279653395692 0.40557978767263886 0.4055797876726388 0.5792279653395691"/>
+      <!-- Angled down 30 deg -->
+      <!-- <camera name="side_cam" class="realsense_d435i_rgb" mode="fixed" pos="0.7 0 0.25" quat="0.6123724356957946 0.35355339059327373 0.3535533905932737 0.6123724356957945"/> -->
       <geom class="visual" mesh="link_base"/>
       <geom name="link_base_c" class="collision" mesh="link_base_c"/>
       <body name="link1" pos="0 0 0.2435">
@@ -118,6 +122,7 @@
                   <geom name="link6_c" class="collision" mesh="link6_c"/>
                   <!-- Attachment site site -->
                   <site name="attachment_site"/>
+                  <camera name="gripper_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/>
                   <body name="gripper_body" pos="0 0 0" quat="1 0 0 0">
                     <!-- TODO: inertia properties - these include the fingers -->
                     <inertial pos="0.0 0.0 0.030" quat="1 0 0 0" mass="0.28"
