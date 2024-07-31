@@ -32,8 +32,8 @@ class UfactoryLite6Env(gym.Env):
         obs_type="pixels_state",
         action_type="qpos",
         render_mode="rgb_array",
-        visualization_width: int=244,
-        visualization_height: int=244,
+        visualization_width: int=640,
+        visualization_height: int=480,
     ):
         # xml_file = MODEL_DIR/"lite6_viz.xml"
         super().__init__()
@@ -78,19 +78,13 @@ class UfactoryLite6Env(gym.Env):
         self.top_camera.azimuth = 0
         self.top_camera.lookat = (0.3, 0, 0.2)
 
-        self.side_camera = mujoco.MjvCamera()
-        # mujoco.mjv_defaultFreeCamera(self.model, self.side_camera)
-        self.side_camera.distance = 1
-        self.side_camera.elevation = 0
-        self.side_camera.azimuth = 180
-        self.side_camera.lookat = (0, 0, 0.1)
-
-        self.ego_camera = mujoco.MjvCamera()
-        # mujoco.mjv_defaultFreeCamera(self.model, self.ego_camera)
-        self.ego_camera.distance = 0.2
-        self.ego_camera.elevation = -80
-        self.ego_camera.azimuth = 0
-
+        # Now defined in XML
+        # self.side_camera = mujoco.MjvCamera()
+        # # mujoco.mjv_defaultFreeCamera(self.model, self.side_camera)
+        # self.side_camera.distance = 1
+        # self.side_camera.elevation = 0
+        # self.side_camera.azimuth = 180
+        # self.side_camera.lookat = (0, 0, 0.1)
 
         if self.obs_type == "state":
             raise NotImplementedError()
@@ -139,11 +133,21 @@ class UfactoryLite6Env(gym.Env):
         elif self.obs_type == "pixels_state":
           self.observation_space = spaces.Dict(
               {
-                "pixels": spaces.Box(
-                    low=0,
-                    high=255,
-                    shape=(self.visualization_height, self.visualization_width, 3),
-                    dtype=np.uint8,
+                "pixels": spaces.Dict(
+                    {
+                    "side": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.visualization_height, self.visualization_width, 3),
+                        dtype=np.uint8,
+                    ),
+                    "gripper": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.visualization_height, self.visualization_width, 3),
+                        dtype=np.uint8,
+                    ),
+                    }
                 ),
                   "state": spaces.Dict(
                     {
@@ -251,11 +255,10 @@ class UfactoryLite6Env(gym.Env):
 
         return (vals - in_range_centre) / in_range_bounds * out_range_bounds + out_range_centre
 
-    def render(self, show_sites=False):
-        self.ego_camera.lookat = self.data.site('end_effector').xpos
+    def render(self, camera=0):
 
         # self.renderer.update_scene(self.data, self.external_camera, self.voption)
-        self.renderer.update_scene(self.data, self.side_camera, self.voption)
+        self.renderer.update_scene(self.data, camera, self.voption)
 
         return self.renderer.render()
 
@@ -365,7 +368,7 @@ class UfactoryLite6Env(gym.Env):
           qpos = deepcopy(self.data.qpos[:self.dof])
           qvel = deepcopy(self.data.qvel[:self.dof])
           gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
-          observation =  {"state": {"qpos": qpos, "qvel": qvel, "gripper": gripper}, "pixels": self.render()}
+          observation =  {"state": {"qpos": qpos, "qvel": qvel, "gripper": gripper}, "pixels": {"side": self.render(camera="side_cam"), "gripper": self.render(camera="gripper_cam")}}
 
         else:
           raise NotImplementedError()
