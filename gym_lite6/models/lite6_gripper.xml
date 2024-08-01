@@ -79,10 +79,12 @@
     <body name="link_base" childclass="lite6">
       <inertial pos="-0.00829545 3.26357e-05 0.0631195" mass="1.65394" diaginertia="0 0 0"/>
       <!-- Angled down 20 deg -->
-      <camera name="side_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.7 0 0.25" quat="0.5792279653395692 0.40557978767263886 0.4055797876726388 0.5792279653395691"/>
-      <camera name="side_cam_sterei" class="realsense_d435i_stereo_640" mode="fixed" pos="0.7 0 0.25" quat="0.5792279653395692 0.40557978767263886 0.4055797876726388 0.5792279653395691"/>
+      <!-- <camera name="side_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="1.2 0 0.4" quat="0.5792279653395692 0.40557978767263886 0.4055797876726388 0.5792279653395691"/> -->
+      <!-- Angled down 25 deg -->
+      <camera name="side_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="1.2 0 0.4" quat="0.560985526796931 0.43045933457687946 0.4304593345768794 0.5609855267969309"/>
+      <!-- <camera name="side_cam_stereo" class="realsense_d435i_stereo_640" mode="fixed" pos="1 0 0.4" quat="0.5792279653395692 0.40557978767263886 0.4055797876726388 0.5792279653395691"/> -->
       <!-- Angled down 30 deg -->
-      <!-- <camera name="side_cam" class="realsense_d435i_rgb" mode="fixed" pos="0.7 0 0.25" quat="0.6123724356957946 0.35355339059327373 0.3535533905932737 0.6123724356957945"/> -->
+      <!-- <camera name="side_cam" class="realsense_d435i_rgb" mode="fixed" pos="1 0 0.4" quat="0.6123724356957946 0.35355339059327373 0.3535533905932737 0.6123724356957945"/> -->
       <geom class="visual" mesh="link_base"/>
       <geom name="link_base_c" class="collision" mesh="link_base_c"/>
       <body name="link1" pos="0 0 0.2435">
@@ -121,10 +123,9 @@
                   <joint name="joint6" range="-6.28319 6.28319"/>
                   <geom class="visual" mesh="link6" material="silver"/>
                   <geom name="link6_c" class="collision" mesh="link6_c"/>
-                  <!-- Attachment site site -->
                   <site name="attachment_site"/>
                   <camera name="gripper_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/>
-                  <camera name="gripper_cam_stereo" class="realsense_d435i_stereo_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/>
+                  <!-- <camera name="gripper_cam_stereo" class="realsense_d435i_stereo_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/> -->
                   <body name="gripper_body" pos="0 0 0" quat="1 0 0 0">
                     <!-- TODO: inertia properties - these include the fingers -->
                     <inertial pos="0.0 0.0 0.030" quat="1 0 0 0" mass="0.28"
@@ -141,7 +142,7 @@
                       <joint name="gripper_right_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="1e-5 0.0081" frictionloss="1" />
                     </body>
                     <!-- End effector reference point is in the centre at the tip of the grippers -->
-                    <site name="end_effector" pos="0 0 0.0811"/>
+                    <site name="end_effector" pos="0 0 0.0811" size="0.001 0.001 0.001" rgba="0.5 0.5 0.5 0.2"/>
                   </body>
                 </body>
               </body>
@@ -165,20 +166,12 @@
   </worldbody>
 
   <actuator>
-    <!-- TODO: Split into position, velocity, force control groups -->
     <position joint="joint1" group="1" class="size1" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
     <position joint="joint2" group="1" class="size1" kp="8000" kv="600" ctrlrange="-2.61799 2.61799" />
     <position joint="joint3" group="1" class="size2" kp="8000" kv="600" ctrlrange="-0.061087 5.23599" />
     <position joint="joint4" group="1" class="size2" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
     <position joint="joint5" group="1" class="size2" kp="8000" kv="600" ctrlrange="-2.1642 2.1642" />
     <position joint="joint6" group="1" class="size3" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
-
-    <!-- <intvelocity joint="joint1" group="2" class="size1" kp="20" kv="1" ctrlrange="-4 4" actrange="-6.28319 6.28319" />
-    <intvelocity joint="joint2" group="2" class="size1" kp="20" kv="1" ctrlrange="-4 4" actrange="-2.61799 2.61799" />
-    <intvelocity joint="joint3" group="2" class="size2" kp="20" kv="1" ctrlrange="-4 4" actrange="-0.061087 5.23599" />
-    <intvelocity joint="joint4" group="2" class="size2" kp="20" kv="1" ctrlrange="-4 4" actrange="-6.28319 6.28319" />
-    <intvelocity joint="joint5" group="2" class="size2" kp="20" kv="1" ctrlrange="-4 4" actrange="-2.1642 2.1642" />
-    <intvelocity joint="joint6" group="2" class="size3" kp="20" kv="1" ctrlrange="-4 4" actrange="-6.28319 6.28319" /> -->
 
     <velocity joint="joint1" group="2" class="size1" kv="150" ctrlrange="-4 4" />
     <velocity joint="joint2" group="2" class="size1" kv="150" ctrlrange="-4 4" />

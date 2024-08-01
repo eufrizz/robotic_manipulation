@@ -27,8 +27,7 @@ class UfactoryLite6Env(gym.Env):
     def __init__(
         self,
         task,
-        # xml_file: str = str(MODEL_DIR/"lite6_viz.xml"),
-        xml_file: str = str(MODEL_DIR/"cube_pickup.xml"),
+        xml_file: str = str(MODEL_DIR/"cube_pickup_large.xml"),
         obs_type="pixels_state",
         action_type="qpos",
         render_mode="rgb_array",
@@ -164,8 +163,6 @@ class UfactoryLite6Env(gym.Env):
         if self.action_type == "qpos":
             self.action_space = spaces.Dict(
                 {
-                # "pos": spaces.Box(low=np.array([-1, -1, -1, 0, 0, 0, 0]), high=np.array([1, 1, 1, 1, 1, 1, 1]), shape=(7,), dtype=np.float32),
-                # "pose": spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32),
                 "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], dtype=np.float64),
                 "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                 }
@@ -180,7 +177,7 @@ class UfactoryLite6Env(gym.Env):
         else:
           raise KeyError(f"Invalid action type {self.action_type}")
 
-        self.object_space = spaces.Box(low=np.array([0.1, -0.4, 0, 0, 0, 0, 0]), high=np.array([0.4, 0.4, 0, 1, 1, 1, 1]), dtype=np.float32)
+        self.object_space = spaces.Box(low=np.array([0.1, -0.3, 0, 0, 0, 0, 0]), high=np.array([0.4, 0.3, 0, 1, 1, 1, 1]), dtype=np.float32)
 
     def gripper_action_to_force(self, action):
         """

@@ -1,13 +1,18 @@
 <mujoco model="ufactory_lite6">
   <compiler angle="radian" meshdir="../../mujoco_menagerie/ufactory_lite6/assets" autolimits="true"/>
-
   <option integrator="implicitfast"/>
 
+  <include file="realsense_d435.xml"/>
   <default>
     <default class="lite6">
       <geom type="mesh"/>
       <joint axis="0 0 1" damping="1" armature="0.1"/>
-      <general gaintype="fixed" biastype="affine" gainprm="2000" biasprm="0 -2000 -200"/>
+
+      <!-- Each actuator is defined by its size and control type (pos, vel)
+      Unfortunately mujoco does not allow inheritance from two classes, and any defaults applied to one actuator type apply to others as they are all "general"
+      So we can only set either defaults for motor size or actuator type via the class, not both. Here I choose to go with the class for motor size. Alternatively we could
+      have more classes that are a composite of size and motor type, but it seems cleaner to just specify the gains and groups altogether in the actuator definitions
+      -->
       <default class="size1">
         <general forcerange="-50 50"/>
       </default>
@@ -17,6 +22,7 @@
       <default class="size3">
         <general forcerange="-20 20"/>
       </default>
+
       <default class="visual">
         <geom contype="0" conaffinity="0" group="2" material="white"/>
         <default class="target">
@@ -26,8 +32,7 @@
       <default class="collision">
         <geom group="3" mass="0" density="0"/>
       </default>
-      <!-- This line causes sites to be in group 4 by default, making them unseen when site frame and label visualisations are turned on -->
-      <!-- <site size="0.001" rgba="0.15 0.15 0.15 0.3" group="4"/> -->
+
     </default>
   </default>
 
@@ -54,6 +59,10 @@
     <mesh name="link5_c" file="collision/link5.stl"/>
     <mesh name="link6_c" file="collision/link6.stl"/>
     <mesh name="gripper_lite_body_c" file="collision/gripper_lite_body.stl"/>
+    <mesh file="collision/gripper_lite_left_finger_external_base.stl"/>
+    <mesh file="collision/gripper_lite_right_finger_external_base.stl"/>
+    <mesh file="collision/gripper_lite_left_finger_external_tip.stl"/>
+    <mesh file="collision/gripper_lite_right_finger_external_tip.stl"/>
   </asset>
 
   <visual>  
@@ -70,66 +79,80 @@
   </asset>
 
   <worldbody>
-    <!-- Scene objects for visualisation -->
-    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
     <body name="link_base" childclass="lite6">
       <inertial pos="-0.00829545 3.26357e-05 0.0631195" mass="1.65394" diaginertia="0 0 0"/>
+      <!-- Angled down 25 deg -->
+      <camera name="side_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="1.2 0 0.4" quat="0.560985526796931 0.43045933457687946 0.4304593345768794 0.5609855267969309"/>
       <geom class="visual" mesh="link_base"/>
-      <geom class="collision" mesh="link_base_c"/>
+      <geom name="link_base_c" class="collision" mesh="link_base_c"/>
       <body name="link1" pos="0 0 0.2435">
         <inertial pos="-0.00036 0.04195 -0.0025" quat="0.608059 0.792349 -0.0438707 0.0228718" mass="1.411"
           diaginertia="0.00145276 0.00135275 0.000853355"/>
         <joint name="joint1" range="-6.28319 6.28319"/>
         <geom class="visual" mesh="link1"/>
-        <geom class="collision" mesh="link1_c"/>
+        <geom name="link1_c" class="collision" mesh="link1_c"/>
         <body name="link2" quat="-1 1 1 1">
           <inertial pos="0.179 0 0.0584" quat="0.417561 0.571619 0.569585 0.417693" mass="1.34"
             diaginertia="0.00560971 0.0052152 0.00122018"/>
           <joint name="joint2" range="-2.61799 2.61799"/>
           <geom class="visual" mesh="link2"/>
-          <geom class="collision" mesh="link2_c"/>
+          <geom name="link2_c" class="collision" mesh="link2_c"/>
           <body name="link3" pos="0.2002 0 0" quat="-2.59734e-06 -0.707105 -0.707108 -2.59735e-06">
             <inertial pos="0.072 -0.0357 -0.001" quat="0.128259 0.662963 -0.167256 0.71837" mass="0.953"
               diaginertia="0.0018521 0.00175546 0.000703807"/>
             <joint name="joint3" range="-0.061087 5.23599"/>
             <geom class="visual" mesh="link3"/>
-            <geom class="collision" mesh="link3_c"/>
+            <geom name="link3_c" class="collision" mesh="link3_c"/>
             <body name="link4" pos="0.087 -0.22761 0" quat="0.707105 0.707108 0 0">
               <inertial pos="-0.002 -0.0285 -0.0813" quat="0.975248 0.22109 0.00203498 -0.00262178" mass="1.284"
                 diaginertia="0.00370503 0.00349091 0.00109586"/>
               <joint name="joint4" range="-6.28319 6.28319"/>
               <geom class="visual" mesh="link4"/>
-              <geom class="collision" mesh="link4_c"/>
+              <geom name="link4_c" class="collision" mesh="link4_c"/>
               <body name="link5" quat="1 1 0 0">
                 <inertial pos="0 0.01 0.0019" quat="0.71423 0.696388 -0.0531933 0.0456997" mass="0.804"
                   diaginertia="0.000567553 0.000529266 0.000507681"/>
                 <joint name="joint5" range="-2.1642 2.1642"/>
                 <geom class="visual" mesh="link5"/>
-                <geom class="collision" mesh="link5_c"/>
+                <geom name="link5_c" class="collision" mesh="link5_c"/>
                 <body name="link6" pos="0 0.0625 0" quat="1 -1 0 0">
                   <inertial pos="0 -0.00194 -0.0102" quat="-0.0376023 0.704057 0.0446838 0.707738" mass="0.13"
                     diaginertia="0.000148148 8.57757e-05 7.71412e-05"/>
                   <joint name="joint6" range="-6.28319 6.28319"/>
                   <geom class="visual" mesh="link6" material="silver"/>
-                  <geom class="collision" mesh="link6_c"/>
+                  <geom name="link6_c" class="collision" mesh="link6_c"/>
                   <site name="attachment_site"/>
+                  <camera name="gripper_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/>
                   <body name="gripper_body" pos="0 0 0" quat="1 0 0 0">
                     <!-- TODO: inertia properties - these include the fingers -->
                     <inertial pos="0.0 0.0 0.030" quat="1 0 0 0" mass="0.28"
                     diaginertia="0.00047106 0.00033072 0.00025642" />
                     <geom class="visual" mesh="gripper_lite_body" material="white"/>
-                    <geom class="collision" mesh="gripper_lite_body_c"/>
+                    <geom name="gripper_lite_body_c" class="collision" mesh="gripper_lite_body_c"/>
                     <!-- TODO: inertial properties -->
-                    <body name="gripper_left_finger" pos="0 0 0.054" quat="1 0 0 0">
-                      <geom mesh="gripper_lite_left_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"/>
+                    <!-- <body name="gripper_left_finger" pos="0 0 0.054" quat="1 0 0 0">
+                      <geom name="gripper_left_finger" mesh="gripper_lite_left_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="2 0.005 0.0001"/>
                       <joint name="gripper_left_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="-0.0081 -1e-5" frictionloss="0.4" />     
                     </body>
                     <body name="gripper_right_finger" pos="0 0 0.054" quat="1 0 0 0">
-                      <geom mesh="gripper_lite_right_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001"/>
+                      <geom name="gripper_right_finger" mesh="gripper_lite_right_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="2 0.005 0.0001"/>
                       <joint name="gripper_right_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="1e-5 0.0081" frictionloss="0.4" />
+                    </body> -->
+                    <body name="gripper_left_finger" pos="0 0 0.054" quat="1 0 0 0">
+                      <joint name="gripper_left_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="-0.0081 -1e-5" frictionloss="0.4" />     
+                      <geom mesh="gripper_lite_left_finger_external" class="visual" material="black"/>
+                      <geom name="gripper_left_finger_base" class="collision" mesh="gripper_lite_left_finger_external_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
+                      <geom name="gripper_left_finger" class="collision" mesh="gripper_lite_left_finger_external_tip" material="black" condim="4" solimp="1 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
                     </body>
+                    <body name="gripper_right_finger" pos="0 0 0.054" quat="1 0 0 0">
+                      <joint name="gripper_right_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="1e-5 0.0081" frictionloss="0.4" />
+                      <geom mesh="gripper_lite_right_finger_external" class="visual" material="black"/>
+                      <geom name="gripper_right_finger_base" class="collision" mesh="gripper_lite_right_finger_external_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
+                      <geom name="gripper_right_finger" class="collision" mesh="gripper_lite_right_finger_external_tip" material="black" condim="4" solimp="1 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
+                    </body>
+                    <!-- End effector reference point is in the centre at the tip of the grippers -->
+                    <site name="end_effector" pos="0 0 0.0811" size="0.001 0.001 0.001" rgba="0.5 0.5 0.5 0.2"/>
                   </body>
                 </body>
               </body>
@@ -139,31 +162,42 @@
       </body>
     </body>
 
+    <!-- Scene objects for visualisation -->
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+
     <!-- Free floating target body to visualise target/goal pose, with rectangular prism ends for distinction-->
     <body name="target" pos=".3 .3 .3" quat="1 0 0 0" mocap="true">
       <site name="target" group="2"/>
-      <geom class="target" fromto=".07 0 0 .15 0 0" rgba="1 0 0 1"/>
+      <!-- <geom class="target" fromto=".07 0 0 .15 0 0" rgba="1 0 0 1"/>
       <geom class="target" fromto="0 .07 0 0 .15 0" rgba="0 1 0 1"/>
-      <geom class="target" fromto="0 0 .07 0 0 .15" rgba="0 0 1 1"/>
+      <geom class="target" fromto="0 0 .07 0 0 .15" rgba="0 0 1 1"/> -->
     </body>
   </worldbody>
 
   <actuator>
-    <general joint="joint1" class="size1" ctrlrange="-6.28319 6.28319"/>
-    <general joint="joint2" class="size1" ctrlrange="-2.61799 2.61799"/>
-    <general joint="joint3" class="size2" ctrlrange="-0.061087 5.23599"/>
-    <general joint="joint4" class="size2" ctrlrange="-6.28319 6.28319"/>
-    <general joint="joint5" class="size2" ctrlrange="-2.1642 2.1642"/>
-    <general joint="joint6" class="size3" ctrlrange="-6.28319 6.28319"/>
-    <!-- Feel like it should be 10N because it can lift 1kg but it seems too anaemic -->
-    <general joint="gripper_left_finger" forcerange="-20 20"/>
+    <position joint="joint1" group="1" class="size1" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
+    <position joint="joint2" group="1" class="size1" kp="8000" kv="600" ctrlrange="-2.61799 2.61799" />
+    <position joint="joint3" group="1" class="size2" kp="8000" kv="600" ctrlrange="-0.061087 5.23599" />
+    <position joint="joint4" group="1" class="size2" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
+    <position joint="joint5" group="1" class="size2" kp="8000" kv="600" ctrlrange="-2.1642 2.1642" />
+    <position joint="joint6" group="1" class="size3" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
+
+    <velocity joint="joint1" group="2" class="size1" kv="150" ctrlrange="-4 4" />
+    <velocity joint="joint2" group="2" class="size1" kv="150" ctrlrange="-4 4" />
+    <velocity joint="joint3" group="2" class="size2" kv="150" ctrlrange="-4 4" />
+    <velocity joint="joint4" group="2" class="size2" kv="150" ctrlrange="-4 4" />
+    <velocity joint="joint5" group="2" class="size2" kv="150" ctrlrange="-4 4" />
+    <velocity joint="joint6" group="2" class="size3" kv="150" ctrlrange="-4 4" />
+    <!-- TODO: Should it also be halved due to doubling with the right finger? -->
+    <motor name="gripper" joint="gripper_left_finger" group="0" forcerange="-10 10" ctrlrange="-10 10"/>
   </actuator>
 
   <equality>
     <joint joint1="gripper_left_finger" joint2="gripper_right_finger" polycoef="0 -1 0 0 0"/>
   </equality>
 
-  <!-- <keyframe>
-    <key name="home" qpos="0 0 1.57 0 1.57 0" ctrl="0 0 1.57 0 1.57 0"/>
-  </keyframe> -->
+  <!-- Keep in mind this is a bit field so use powers of 2, i.e. 2**group_id -->
+  <option actuatorgroupdisable="2" />
+
 </mujoco>

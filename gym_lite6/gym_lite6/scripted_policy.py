@@ -53,8 +53,8 @@ class ScriptedPickupPolicy(object):
         #   min_rotation = 
         
 
-        goal_pos = data.geom(self.object_name).xpos + model.geom(self.object_name).size / 2
-        goal_pos[2] += model.geom(self.object_name).size[2] + 0.006
+        goal_pos = data.geom(self.object_name).xpos
+        goal_pos[2] += model.geom(self.object_name).size[2] * 2 + 0.005
         goal_quat = np.array([0, 1, 0, 0])
 
         T_start = utils.get_tf_matrix(ref_pos, ref_quat)
@@ -62,8 +62,8 @@ class ScriptedPickupPolicy(object):
 
         # Straight line distance to keep in maximum straight line velocity
         dist = np.linalg.norm(goal_pos - ref_pos)
-        # Go for anywhere between 0.3 to 0.966 of max vel
-        vel_scale = np.random.rand() * 2/3 + 0.3
+        # Go for anywhere between 0.5 to 0.966 of max vel
+        vel_scale = np.random.rand() * 0.4 + 0.6
         end_time = dist/(vel_scale * self.max_vel)
 
         self.trajectory_params = {0: {"start_time": data.time, "end_time": data.time + end_time, "T_start": T_start, "T_end": T_end, "goal_pos": goal_pos, "goal_quat": goal_quat}}
@@ -110,7 +110,7 @@ class ScriptedPickupPolicy(object):
       if self.stage not in self.trajectory_params:
         goal_pos = self.trajectory_params[0]["goal_pos"]
         # Grip height
-        goal_pos[2] = model.geom(self.object_name).size[self.stage] * 0.2
+        goal_pos[2] = model.geom(self.object_name).size[2] * 2 - 0.004
         goal_quat = np.array([0, 1, 0, 0])
 
         T_start = utils.get_tf_matrix(ref_pos, ref_quat)
