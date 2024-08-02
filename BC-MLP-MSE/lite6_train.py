@@ -35,7 +35,7 @@ class MLPPolicy(torch.nn.Module):
     actor.append(torch.nn.Linear(hidden_layer_dims[-1], output_size))
     return torch.nn.Sequential(*actor)
 
-  def _create_img_feature_extractor(self):
+  def _create_img_feature_extractor(self, frozen=False):
     """
     ResNet18 backbone with last fc layer chopped off
     Weights frozen
@@ -44,7 +44,7 @@ class MLPPolicy(torch.nn.Module):
     resnet = torchvision.models.resnet18(weights='DEFAULT')
     modules = list(resnet.children())[:-1]
     backbone = torch.nn.Sequential(*modules)
-    backbone.requires_grad_(False)
+    backbone.requires_grad_(not frozen)
     return backbone
 
   def forward(self, state, image):
@@ -67,7 +67,7 @@ class MLPPolicy(torch.nn.Module):
 # %%
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
 
-policy = MLPPolicy([64, 64]).to(device)
+policy = MLPPolicy([128, 128]).to(device)
 
 # %%
 class Trainer:
@@ -116,7 +116,7 @@ class Trainer:
     
     # Convert to float32 with image from channel first in [0,255]
     tf = torchvision.transforms.ToTensor()
-    out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels"]])
+    out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
 
     return out
   
@@ -144,7 +144,7 @@ class Trainer:
         if self.params["normalize_qpos"] is not False:
           qpos = self.normalize_qpos(qpos)
         state = torch.hstack((qpos, gripper))
-        image = torch.from_numpy(numpy_observation["pixels"])
+        image = torch.from_numpy(numpy_observation["pixels"]["side"])
         
         # Convert to float32 with image from channel first in [0,255]
         # to channel last in [0,1]
@@ -196,6 +196,14 @@ if __name__ == '__main__':
   from torch.utils.tensorboard import SummaryWriter
   import datetime
   from pathlib import Path
+  import argparse
+
+  parser = argparse.ArgumentParser(
+                    prog='Train Lite6 BC-MLP-MSE',
+                    description='Train BC-MLP-MSE on Ufactory Lite6')
+  parser.add_argument('checkpoint')
+
+  args = parser.parse_args()
 
   # %%
   task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
@@ -203,7 +211,9 @@ if __name__ == '__main__':
       "UfactoryCubePickup-v0",
       task=task,
       obs_type="pixels_state",
-      max_episode_steps=300,
+      max_episode_steps=350,
+      visualization_width=320,
+      visualization_height=240,
   )
   observation, info = env.reset()
   # media.show_image(env.render(), width=400, height=400)
@@ -219,7 +229,7 @@ if __name__ == '__main__':
 
   trainer = Trainer(params)
 
-  dataset = load_from_disk("../dataset/scripted_trajectories_50_2024-07-14_14-25-22.hf")
+  dataset = load_from_disk("datasets/scripted_trajectories_50_2024-08-02_12-49-56.hf")
   dataset.set_transform(trainer.preprocess_data)
   dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=2)
 
