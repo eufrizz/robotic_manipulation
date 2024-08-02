@@ -1,6 +1,7 @@
 import numpy as np
 import mujoco
 from gym_lite6 import utils
+from copy import deepcopy
 
 class ScriptedPickupPolicy(object):
   """
@@ -31,11 +32,10 @@ class ScriptedPickupPolicy(object):
 
     ref_quat = np.empty(4)
     mujoco.mju_mat2Quat(ref_quat, data.site(self.ref_name).xmat)
-    ref_pos = data.site(self.ref_name).xpos
+    ref_pos = deepcopy(data.site(self.ref_name).xpos)
 
     if self.trajectory_params is None:
         # Above the object
-        goal_pos = data.geom(self.object_name).xpos
         #TODO: deal with object on its side
         # goal_pos[2] += model.geom(self.object_name).size[2]
 
@@ -53,7 +53,7 @@ class ScriptedPickupPolicy(object):
         #   min_rotation = 
         
 
-        goal_pos = data.geom(self.object_name).xpos
+        goal_pos = deepcopy(data.geom(self.object_name).xpos)
         goal_pos[2] += model.geom(self.object_name).size[2] * 2 + 0.005
         goal_quat = np.array([0, 1, 0, 0])
 
@@ -81,12 +81,13 @@ class ScriptedPickupPolicy(object):
         action["gripper"] = 0
 
       pos_xy_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"][:2] - ref_pos[:2])
+      pos_z_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"][2] - ref_pos[2])
       res_quat = np.empty(3)
       mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
       quat_err = np.linalg.norm(res_quat)
 
-      # TODO: gravity compensation for tighter tolerances here, including Z
-      pos_reached = pos_xy_err < 5e-3
+      # TODO: need gravity compensation for tighter tolerances here, including Z
+      pos_reached = pos_xy_err < 3e-3 and pos_z_err < 5e-3
       quat_reached = quat_err < 5e-3
       # print(pos_err, quat_err)
 
@@ -108,9 +109,9 @@ class ScriptedPickupPolicy(object):
       action["gripper"] = -1
 
       if self.stage not in self.trajectory_params:
-        goal_pos = self.trajectory_params[0]["goal_pos"]
+        goal_pos = deepcopy(self.trajectory_params[0]["goal_pos"])
         # Grip height
-        goal_pos[2] = model.geom(self.object_name).size[2] * 2 - 0.004
+        goal_pos[2] = max(model.geom(self.object_name).size[2] * 2 - 0.02, 0.001)
         goal_quat = np.array([0, 1, 0, 0])
 
         T_start = utils.get_tf_matrix(ref_pos, ref_quat)
@@ -125,7 +126,7 @@ class ScriptedPickupPolicy(object):
       mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
       quat_err = np.linalg.norm(res_quat)
 
-      pos_reached = pos_err < 5e-3
+      pos_reached = pos_err < 3e-3
       quat_reached = quat_err < 5e-3
 
       if pos_reached:
@@ -173,7 +174,7 @@ class ScriptedPickupPolicy(object):
     # Lift
     if self.stage == 3:
       if self.stage not in self.trajectory_params:
-        goal_pos = self.trajectory_params[0]["goal_pos"] + np.array([0, 0, 0.25])
+        goal_pos = deepcopy(self.trajectory_params[0]["goal_pos"]) + np.array([0, 0, 0.25])
         goal_quat = np.array([0, 1, 0, 0])
 
         T_start = utils.get_tf_matrix(ref_pos, ref_quat)

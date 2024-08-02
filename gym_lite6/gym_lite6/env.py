@@ -177,7 +177,8 @@ class UfactoryLite6Env(gym.Env):
         else:
           raise KeyError(f"Invalid action type {self.action_type}")
 
-        self.object_space = spaces.Box(low=np.array([0.1, -0.3, 0, 0, 0, 0, 0]), high=np.array([0.4, 0.3, 0, 1, 1, 1, 1]), dtype=np.float32)
+        box_min_height = self.model.geom('box').size[2] + 1e-3
+        self.object_space = spaces.Box(low=np.array([0.1, -0.3, box_min_height, 0, 0, 0, 0]), high=np.array([0.4, 0.3, box_min_height, 1, 1, 1, 1]), dtype=np.float32)
 
     def gripper_action_to_force(self, action):
         """
@@ -313,7 +314,7 @@ class UfactoryLite6Env(gym.Env):
             # gripper 6,7
             box_pose = self.object_space.sample()
             # Drop from height to avoid intersection with ground
-            self.data.qpos[8:11] = box_pose[:3] + np.array([0, 0, 0.01])
+            self.data.qpos[8:11] = box_pose[:3]
             # Quaternion pose - normalise
             z_rot = np.random.rand()
             quat = np.array([1-z_rot, 0, 0, z_rot])
