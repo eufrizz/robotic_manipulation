@@ -137,7 +137,8 @@
     <general joint="joint6" class="size3" ctrlrange="-6.28319 6.28319"/>
   </actuator>
 
-  <!-- <keyframe>
+  <keyframe>
     <key name="home" qpos="0 0 1.57 0 1.57 0" ctrl="0 0 1.57 0 1.57 0"/>
-  </keyframe> -->
+    <key name="faceout" qpos="1.546 0.541 1.49  2.961 0.596 0.203" ctrl="1.546 0.541 1.49  2.961 0.596 0.203"/>
+  </keyframe>
 </mujoco>
