@@ -179,7 +179,7 @@ resource/
 # Training
 runs
 
-dataset/
+datasets
 
 ckpts/
 
