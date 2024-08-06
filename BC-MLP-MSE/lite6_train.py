@@ -63,12 +63,6 @@ class MLPPolicy(torch.nn.Module):
     return self.forward(state, image)
 
 
-# %%
-
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
-
-policy = MLPPolicy([128, 128]).to(device)
-
 
 # %%
 from lerobot.common.policies.normalize import Normalize, Unnormalize
@@ -273,12 +267,15 @@ if __name__ == "__main__":
 
   # %%
 
-  # parser = argparse.ArgumentParser(
-  #                   prog='Train Lite6 BC-MLP-MSE',
-  #                   description='Train BC-MLP-MSE on Ufactory Lite6')
-  # parser.add_argument('checkpoint')
+  parser = argparse.ArgumentParser(
+                    prog='Train Lite6 BC-MLP-MSE',
+                    description='Train BC-MLP-MSE on Ufactory Lite6')
+  parser.add_argument('--checkpoint', required=False)
 
-  # args = parser.parse_args()
+  args = parser.parse_args()
+
+  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
+
 
   # %%
   task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
@@ -296,16 +293,6 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.utils import hf_transform_to_torch
-  params = {}
-
-  jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
-  jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
-  bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
-  bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
-  params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
-  params["normalize_qpos"] = False
-
-  # trainer = Trainer(params)
 
   dataset = load_from_disk("datasets/pickup/scripted_trajectories_50_2024-08-02_12-49-56.hf")
   if "from" not in dataset.column_names:
@@ -343,15 +330,36 @@ if __name__ == "__main__":
           pin_memory=device.type != "cpu",
           drop_last=False,
       )
+  
 
-  # %%
-
-  trainer = Trainer(params)
-
-  # %%
-
+  policy = MLPPolicy([128, 128]).to(device)
   optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
   loss_fn = torch.nn.MSELoss()
+
+  if args.checkpoint is None:
+    print("train from scratch")
+    start_epoch = 0
+    params = {}
+    jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
+    jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
+    params["normalize_qpos"] = False
+
+  else:
+    checkpoint = torch.load(args.checkpoint)
+    start_epoch = checkpoint["epoch"]
+    params = checkpoint["params"]
+    policy.load_state_dict(checkpoint["policy"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    loss = checkpoint["loss"]
+    step = checkpoint["step"]
+    print(f"Loaded checkpoint at epoch {start_epoch}")
+
+  # TODO: Maybe check that these are the same as what is loaded from checkpoint?
+  bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
+  bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
+  params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
+
+  trainer = Trainer(params)
 
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
   hidden_layer_dims = '_'.join([str(x.out_features) for x in policy.actor[:-1] if 'out_features' in x.__dict__])
@@ -362,7 +370,7 @@ if __name__ == "__main__":
 
   n_epoch = 20
   step = 0
-  for epoch in range(n_epoch):
+  for epoch in range(start_epoch, start_epoch+n_epoch):
     policy.train()
     end = time.time()
     for batch in tqdm(dataloader):
@@ -418,6 +426,7 @@ if __name__ == "__main__":
     if epoch % 10 == 0 or epoch == n_epoch-1:
       torch.save({
               'epoch': epoch,
+              'step': step,
               'params': params,
               'policy_state_dict': policy.state_dict(),
               'optimizer_state_dict': optimizer.state_dict(),
