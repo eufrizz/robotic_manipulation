@@ -6,9 +6,12 @@ import torch
 import torchvision
 # torch.multiprocessing.set_start_method('spawn')
 import gym_lite6.env, gym_lite6.pickup_task
-#%env MUJOCO_GL=egl # Had to export this before starting jupyter server
+# %env MUJOCO_GL=egl # Had to export this before starting jupyter server
 # import mujoco
 import time
+
+
+# %%
 
 class MLPPolicy(torch.nn.Module):
   def __init__(self, hidden_layer_dims, state_dims=9):
@@ -61,33 +64,47 @@ class MLPPolicy(torch.nn.Module):
 
 
 # %%
-# Reset the policy and environmens to prepare for rollout
 
-
-# %%
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
 
 policy = MLPPolicy([128, 128]).to(device)
 
+
 # %%
+from lerobot.common.policies.normalize import Normalize, Unnormalize
+
 class Trainer:
   def __init__(self, params) -> None:
     # self.env = env # This breaks caching of preprocess_data
 
     self.params = params
+    assert(len(self.params["joint_bounds"]["centre"]) > 1)
+    assert(len(self.params["joint_bounds"]["range"]) == len(self.params["joint_bounds"]["centre"]))
 
   def normalize_qpos(self, qpos):
-    return (qpos - self.params["normalize_qpos"]["bounds_centre"]) / self.params["normalize_qpos"]["bounds_range"] + 0.5
+    """
+    Scale from joint bounds to (-1, 1)
+    """
+    return (qpos - self.params["joint_bounds"]["centre"]) / self.params["joint_bounds"]["range"] * 2
 
   def unnormalize_qpos(self, qpos):
-    return (qpos - 0.5) * self.params["normalize_qpos"]["bounds_range"] + self.params["normalize_qpos"]["bounds_centre"]
+    """
+    Scale from (-1, 1) to joint bounds
+    """
+    return (qpos / 2) * self.params["joint_bounds"]["range"] + self.params["joint_bounds"]["centre"]
+  
+  # TODO: clamp output to joint bounds
+  # def clamp_qpos(self, qpos):
+
+  #   torch.clamp(qpos, min=)
+
   
   def embed_gripper(self, gripper):
     """
     Convert from (-1, 1) to one hot encoded
     One hot needs them as 1d
     """
-    return torch.nn.functional.one_hot(gripper.flatten() + 1, num_classes=3)
+    return torch.nn.functional.one_hot(gripper + 1, num_classes=3)
 
   def decode_gripper(self, gripper):
     """
@@ -95,30 +112,84 @@ class Trainer:
     """
     return (torch.argmax(gripper, dim=1) - 1).unsqueeze(1).to(int)
 
-  def preprocess_data(self, batch):
+  # def preprocess_data(self, batch):
+  #   """
+  #   Take a batch of data and put it in a suitable tensor format for the model
+  #   """
+  #   out = {}
+    
+  #   observation_qpos = torch.tensor(batch["observation.state.qpos"], dtype=torch.float32)
+  #   action_qpos = torch.tensor(batch["action.qpos"], dtype=torch.float32)
+
+  #   observation_gripper = self.embed_gripper(torch.tensor(batch["observation.state.gripper"], dtype=int)).to(torch.float32)
+  #   action_gripper = self.embed_gripper(torch.tensor(batch["action.gripper"], dtype=int)).to(torch.float32)
+
+  #   if self.params["normalize_qpos"] is not False:
+  #     observation_qpos = self.normalize_qpos(observation_qpos)
+  #     action_qpos = self.normalize_qpos(action_qpos)
+
+  #   out["preprocessed.observation.state"] = torch.hstack((observation_qpos, observation_gripper))
+  #   out["preprocessed.action.state"] = torch.hstack((action_qpos, action_gripper))
+    
+  #   # Convert to float32 with image from channel first in [0,255]
+  #   tf = torchvision.transforms.ToTensor()
+  #   out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
+
+  #   return out
+  
+  # def lerobot_preprocess(self, batch):
+  #   """
+  #   Take a batch of data and put it in a suitable tensor format for the model
+  #   Batches here are as a list
+  #   batch: action.qpos : b * t * 6, where b is batch size and t is number of time samples
+  #   action.gripper: b * t
+  #   """
+  #   out = {}
+
+  #   idxs = range(len(batch[list(batch.keys())[0]]))
+  #   # print(f"proprocessor got {batch.keys()}, idxs {idxs}")
+  #   # print(batch)
+    
+  #   if "observation.state.gripper" in batch and "observation.state.qpos" in batch:
+  #     observation_gripper = [self.embed_gripper(batch["observation.state.gripper"][x]).to(torch.float32) for x in idxs ]
+  #     if self.params["normalize_qpos"] is not False:
+  #       batch["observation.state.qpos"] = [self.normalize_qpos(batch["observation.state.qpos"])[x] for x in idxs if "observation.state.gripper" in batch]
+  #     out["preprocessed.observation.state.qpos"] = [torch.hstack((batch["observation.state.qpos"][x], observation_gripper[x].flatten())) for x in idxs]
+    
+  #   if "action.gripper" in batch and "action.qpos" in batch:
+  #     action_gripper = [self.embed_gripper(batch["action.gripper"][x]).to(torch.float32) for x in idxs if "action.gripper" in batch]
+  #     if self.params["normalize_qpos"] is not False:
+  #       batch["action.qpos"] = [self.normalize_qpos(batch["action.qpos"])[x] for x in idxs if "action.qpos" in batch]
+  #     out["preprocessed.action.state.qpos"] = [torch.hstack((batch["action.qpos"][x], action_gripper[x].flatten())) for x in idxs]
+
+    
+  #   # Convert to float32 with image from channel first in [0,255]
+  #   # tf = torchvision.transforms.ToTensor()
+  #   # out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
+  #   batch.update(out)
+
+  #   return batch
+
+  def batched_preprocess(self, batch):
     """
     Take a batch of data and put it in a suitable tensor format for the model
+    Batches here are as a list
+    batch: action.qpos : b * t * 6, where b is batch size and t is number of time samples
+    action.gripper: b * t
     """
-    out = {}
     
-    observation_qpos = torch.tensor(batch["observation.state.qpos"], dtype=torch.float32)
-    action_qpos = torch.tensor(batch["action.qpos"], dtype=torch.float32)
-
-    observation_gripper = self.embed_gripper(torch.tensor(batch["observation.state.gripper"], dtype=int)).to(torch.float32)
-    action_gripper = self.embed_gripper(torch.tensor(batch["action.gripper"], dtype=int)).to(torch.float32)
-
+    observation_gripper = self.embed_gripper(batch["observation.state.gripper"]).to(torch.float32)
+    action_gripper = self.embed_gripper(batch["action.gripper"]).to(torch.float32)
+    
     if self.params["normalize_qpos"] is not False:
-      observation_qpos = self.normalize_qpos(observation_qpos)
-      action_qpos = self.normalize_qpos(action_qpos)
-
-    out["preprocessed.observation.state"] = torch.hstack((observation_qpos, observation_gripper))
-    out["preprocessed.action.state"] = torch.hstack((action_qpos, action_gripper))
+      batch["observation.state.qpos"] = self.normalize_qpos(batch["observation.state.qpos"])
+      batch["action.qpos"] = self.normalize_qpos(batch["action.qpos"])
     
-    # Convert to float32 with image from channel first in [0,255]
-    tf = torchvision.transforms.ToTensor()
-    out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
+    batch["preprocessed.action.state.qpos"] = torch.cat((batch["action.qpos"], action_gripper), dim=-1)
+    batch["preprocessed.observation.state.qpos"] = torch.cat((batch["observation.state.qpos"], observation_gripper), dim=-1)
 
-    return out
+    return batch
+   
   
   def evaluate_policy(self, env, policy, n):
     avg_reward = 0
@@ -140,8 +211,8 @@ class Trainer:
         # Prepare observation for the policy running in Pytorch
         # Get qpos in range (-1, 1), gripper is already in range (-1, 1)
         qpos = torch.from_numpy(numpy_observation["state"]["qpos"]).unsqueeze(0)
-        gripper = self.embed_gripper(torch.tensor(numpy_observation["state"]["gripper"]))
-        if self.params["normalize_qpos"] is not False:
+        gripper = self.embed_gripper(torch.tensor(numpy_observation["state"]["gripper"])).unsqueeze(0)
+        if self.params["normalize_qpos"]:
           qpos = self.normalize_qpos(qpos)
         state = torch.hstack((qpos, gripper))
         image = torch.from_numpy(numpy_observation["pixels"]["side"])
@@ -165,14 +236,11 @@ class Trainer:
           raw_action = policy.predict(state, image).to("cpu")
         
         action["qpos"] = raw_action[:, :6]
-        if self.params["normalize_qpos"] is not False:
+        if self.params["normalize_qpos"]:
           action["qpos"] = self.unnormalize_qpos(action["qpos"])
         
         action["qpos"] = action["qpos"].flatten().numpy()
         action["gripper"] = self.decode_gripper(raw_action[:, 6:8]).item()
-        
-        # print(action)
-        # numpy_action = np.hstack((action["qpos"], action["gripper"]))
 
         # Step through the environment and receive a new observation
         numpy_observation, reward, terminated, truncated, info = env.step(action)
@@ -189,7 +257,11 @@ class Trainer:
     
       return avg_reward, frames
 
-if __name__ == '__main__':
+
+
+# %%
+if __name__ == "__main__":
+
   from datasets import load_from_disk
   from torch.utils.data import DataLoader
   from tqdm import tqdm
@@ -198,12 +270,15 @@ if __name__ == '__main__':
   from pathlib import Path
   import argparse
 
-  parser = argparse.ArgumentParser(
-                    prog='Train Lite6 BC-MLP-MSE',
-                    description='Train BC-MLP-MSE on Ufactory Lite6')
-  parser.add_argument('checkpoint')
 
-  args = parser.parse_args()
+  # %%
+
+  # parser = argparse.ArgumentParser(
+  #                   prog='Train Lite6 BC-MLP-MSE',
+  #                   description='Train BC-MLP-MSE on Ufactory Lite6')
+  # parser.add_argument('checkpoint')
+
+  # args = parser.parse_args()
 
   # %%
   task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
@@ -217,31 +292,73 @@ if __name__ == '__main__':
   )
   observation, info = env.reset()
   # media.show_image(env.render(), width=400, height=400)
-  
+
+
+  # %%
+  from lerobot.common.datasets.utils import hf_transform_to_torch
   params = {}
 
   jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
   jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
   bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
   bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
-  # params["normalize_qpos"] = {"bounds_centre": bounds_centre, "bounds_range": bounds_range}
+  params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
   params["normalize_qpos"] = False
+
+  # trainer = Trainer(params)
+
+  dataset = load_from_disk("datasets/pickup/scripted_trajectories_50_2024-08-02_12-49-56.hf")
+  if "from" not in dataset.column_names:
+    first_frames=dataset.filter(lambda example: example['frame_index'] == 0)
+    from_idxs = torch.tensor(first_frames['index'])
+    to_idxs = torch.tensor(first_frames['index'][1:] + [len(dataset)])
+    episode_data_index={"from": from_idxs, "to": to_idxs}
+      
+  dataset.set_transform(hf_transform_to_torch)
+  # dataset.set_transform(lambda x: trainer.lerobot_preprocess(hf_transform_to_torch(x)))
+  # dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=2)
+
+
+  # %%
+  from lerobot.common.datasets.lerobot_dataset import LeRobotDataset, CODEBASE_VERSION
+  lerobot_dataset = LeRobotDataset.from_preloaded(root=Path("datasets/scripted_trajectories_50_2024-08-02_12-49-56.hf"),
+          split="train",
+          delta_timestamps={"action.qpos": [0, 0.1], "action.gripper": [0, 0.1]},
+          # additional preloaded attributes
+          hf_dataset=dataset,
+          episode_data_index=episode_data_index,
+          info = {
+            "codebase_version": CODEBASE_VERSION,
+            "fps": env.metadata["render_fps"]
+          })
+
+
+  # %%
+  dataloader = DataLoader(
+          lerobot_dataset,
+          num_workers=4,
+          batch_size=128,
+          shuffle=True,
+          # sampler=sampler,
+          pin_memory=device.type != "cpu",
+          drop_last=False,
+      )
+
+  # %%
 
   trainer = Trainer(params)
 
-  dataset = load_from_disk("datasets/scripted_trajectories_50_2024-08-02_12-49-56.hf")
-  dataset.set_transform(trainer.preprocess_data)
-  dataloader = DataLoader(dataset, batch_size=256, shuffle=True, num_workers=2)
+  # %%
 
   optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
   loss_fn = torch.nn.MSELoss()
 
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
   hidden_layer_dims = '_'.join([str(x.out_features) for x in policy.actor[:-1] if 'out_features' in x.__dict__])
-  OUTPUT_FOLDER=f'../ckpts/lite6_pick_place_h{hidden_layer_dims}_{curr_time}'
+  OUTPUT_FOLDER=f'ckpts/lite6_pick_place_h{hidden_layer_dims}_{curr_time}'
   Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-  writer = SummaryWriter(log_dir=f"../runs/lite6_pick_place/{curr_time}")
+  writer = SummaryWriter(log_dir=f"runs/lite6_pick_place/{curr_time}")
 
   n_epoch = 20
   step = 0
@@ -251,10 +368,15 @@ if __name__ == '__main__':
     for batch in tqdm(dataloader):
       data_load_time = time.time()
 
+      batch = trainer.batched_preprocess(batch)
+
       # Send data tensors from CPU to GPU
-      state = batch["preprocessed.observation.state"].to(device, non_blocking=True)
-      image = batch["preprocessed.observation.image"].to(device, non_blocking=True)
-      a_hat = batch["preprocessed.action.state"].to(device, non_blocking=True)
+      state = batch["preprocessed.observation.state.qpos"].to(device, non_blocking=True)
+      image = batch["observation.pixels.side"].to(device, non_blocking=True)
+
+      # Because we sample the action ahead in time [0, 0.1], it has an extra dimension, and we select the last dim
+      a_hat = batch["preprocessed.action.state.qpos"][:, -1, :].to(device, non_blocking=True)
+      # print([(x, batch[x]) for x in batch if "pixels" not in x])
 
       gpu_load_time = time.time()
 
@@ -305,6 +427,4 @@ if __name__ == '__main__':
   writer.flush()
 
   writer.close()
-
-
 
