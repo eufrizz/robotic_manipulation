@@ -22,9 +22,10 @@ class MLPPolicy(torch.nn.Module):
 
     # self.img_feature_extractor = torchvision.models.detection.backbone_utils.resnet_fpn_backbone('resnet18', )
     
-    self.img_feature_extractor = self._create_img_feature_extractor()
+    self.img_feature_extractor_side = self._create_img_feature_extractor()
+    self.img_feature_extractor_gripper = self._create_img_feature_extractor()
     # Resnet output is 1x512, 2 bits for gripper
-    self.actor = self._create_actor(512 + state_dims, hidden_layer_dims, state_dims)
+    self.actor = self._create_actor(512*2 + state_dims, hidden_layer_dims, state_dims)
 
     self.sigmoid = torch.nn.Sigmoid()
   
@@ -50,17 +51,18 @@ class MLPPolicy(torch.nn.Module):
     backbone.requires_grad_(not frozen)
     return backbone
 
-  def forward(self, state, image):
-    img_features = torch.squeeze(self.img_feature_extractor(image), dim=[2, 3])
-    input = torch.hstack((state, img_features))
+  def forward(self, state, side_image, gripper_image):
+    img_features_side = torch.squeeze(self.img_feature_extractor_side(side_image), dim=[2, 3])
+    img_features_gripper = torch.squeeze(self.img_feature_extractor_gripper(gripper_image), dim=[2, 3])
+    input = torch.hstack((state, img_features_side, img_features_gripper))
     out = self.actor(input)
     # Gripper sigmoid
     out[:, 6:8] = self.sigmoid(out[:, 6:8])
     return out
 
   
-  def predict(self, state, image, episode_start=None, deterministic=None):
-    return self.forward(state, image)
+  def predict(self, state, side_image, gripper_image, episode_start=None, deterministic=None):
+    return self.forward(state, side_image, gripper_image)
 
 
 
@@ -105,64 +107,6 @@ class Trainer:
     Convert from one hot encoded to column vector in range (-1, 1)
     """
     return (torch.argmax(gripper, dim=1) - 1).unsqueeze(1).to(int)
-
-  # def preprocess_data(self, batch):
-  #   """
-  #   Take a batch of data and put it in a suitable tensor format for the model
-  #   """
-  #   out = {}
-    
-  #   observation_qpos = torch.tensor(batch["observation.state.qpos"], dtype=torch.float32)
-  #   action_qpos = torch.tensor(batch["action.qpos"], dtype=torch.float32)
-
-  #   observation_gripper = self.embed_gripper(torch.tensor(batch["observation.state.gripper"], dtype=int)).to(torch.float32)
-  #   action_gripper = self.embed_gripper(torch.tensor(batch["action.gripper"], dtype=int)).to(torch.float32)
-
-  #   if self.params["normalize_qpos"] is not False:
-  #     observation_qpos = self.normalize_qpos(observation_qpos)
-  #     action_qpos = self.normalize_qpos(action_qpos)
-
-  #   out["preprocessed.observation.state"] = torch.hstack((observation_qpos, observation_gripper))
-  #   out["preprocessed.action.state"] = torch.hstack((action_qpos, action_gripper))
-    
-  #   # Convert to float32 with image from channel first in [0,255]
-  #   tf = torchvision.transforms.ToTensor()
-  #   out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
-
-  #   return out
-  
-  # def lerobot_preprocess(self, batch):
-  #   """
-  #   Take a batch of data and put it in a suitable tensor format for the model
-  #   Batches here are as a list
-  #   batch: action.qpos : b * t * 6, where b is batch size and t is number of time samples
-  #   action.gripper: b * t
-  #   """
-  #   out = {}
-
-  #   idxs = range(len(batch[list(batch.keys())[0]]))
-  #   # print(f"proprocessor got {batch.keys()}, idxs {idxs}")
-  #   # print(batch)
-    
-  #   if "observation.state.gripper" in batch and "observation.state.qpos" in batch:
-  #     observation_gripper = [self.embed_gripper(batch["observation.state.gripper"][x]).to(torch.float32) for x in idxs ]
-  #     if self.params["normalize_qpos"] is not False:
-  #       batch["observation.state.qpos"] = [self.normalize_qpos(batch["observation.state.qpos"])[x] for x in idxs if "observation.state.gripper" in batch]
-  #     out["preprocessed.observation.state.qpos"] = [torch.hstack((batch["observation.state.qpos"][x], observation_gripper[x].flatten())) for x in idxs]
-    
-  #   if "action.gripper" in batch and "action.qpos" in batch:
-  #     action_gripper = [self.embed_gripper(batch["action.gripper"][x]).to(torch.float32) for x in idxs if "action.gripper" in batch]
-  #     if self.params["normalize_qpos"] is not False:
-  #       batch["action.qpos"] = [self.normalize_qpos(batch["action.qpos"])[x] for x in idxs if "action.qpos" in batch]
-  #     out["preprocessed.action.state.qpos"] = [torch.hstack((batch["action.qpos"][x], action_gripper[x].flatten())) for x in idxs]
-
-    
-  #   # Convert to float32 with image from channel first in [0,255]
-  #   # tf = torchvision.transforms.ToTensor()
-  #   # out["preprocessed.observation.image"] = torch.stack([tf(x) for x in batch["observation.pixels.side"]])
-  #   batch.update(out)
-
-  #   return batch
 
   def batched_preprocess(self, batch):
     """
@@ -209,25 +153,21 @@ class Trainer:
         if self.params["normalize_qpos"]:
           qpos = self.normalize_qpos(qpos)
         state = torch.hstack((qpos, gripper))
-        image = torch.from_numpy(numpy_observation["pixels"]["side"])
+        image_side = torch.from_numpy(numpy_observation["pixels"]["side"]).permute(2, 0, 1).unsqueeze(0) / 255
+        image_gripper = torch.from_numpy(numpy_observation["pixels"]["gripper"]).permute(2, 0, 1).unsqueeze(0) / 255
         
         # Convert to float32 with image from channel first in [0,255]
         # to channel last in [0,1]
         state = state.to(torch.float32)
-        image = image.to(torch.float32) / 255
-        image = image.permute(2, 0, 1)
-
-        # Add extra (empty) batch dimension, required to forward the policy
-        # state = state.unsqueeze(0)
-        image = image.unsqueeze(0)
 
         # Send data tensors from CPU to GPU
         state = state.to(device, non_blocking=True)
-        image = image.to(device, non_blocking=True)
+        image_side = image_side.to(device, non_blocking=True)
+        image_gripper = image_gripper.to(device, non_blocking=True)
 
         # Predict the next action with respect to the current observation
         with torch.inference_mode():
-          raw_action = policy.predict(state, image).to("cpu")
+          raw_action = policy.predict(state, image_side, image_gripper).to("cpu")
         
         action["qpos"] = raw_action[:, :6]
         if self.params["normalize_qpos"]:
@@ -270,7 +210,9 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser(
                     prog='Train Lite6 BC-MLP-MSE',
                     description='Train BC-MLP-MSE on Ufactory Lite6')
-  parser.add_argument('--checkpoint', required=False)
+  parser.add_argument('--checkpoint')
+  parser.add_argument('--eval', action='store_true')
+  parser.add_argument('--n_epochs', default=20, type=int)
 
   args = parser.parse_args()
 
@@ -332,108 +274,120 @@ if __name__ == "__main__":
       )
   
 
-  policy = MLPPolicy([128, 128]).to(device)
-  optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
+  policy = MLPPolicy([64, 64, 64]).to(device)
+  optimizer = torch.optim.Adam(policy.parameters(), lr=5e-4)
   loss_fn = torch.nn.MSELoss()
 
   if args.checkpoint is None:
     print("train from scratch")
     start_epoch = 0
+    step = 0
     params = {}
-    jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
-    jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
     params["normalize_qpos"] = False
+    loss=torch.tensor(0)
 
   else:
     checkpoint = torch.load(args.checkpoint)
-    start_epoch = checkpoint["epoch"]
+    start_epoch = checkpoint["epoch"] + 1
+    step = checkpoint["step"]
     params = checkpoint["params"]
-    policy.load_state_dict(checkpoint["policy"])
+    policy.load_state_dict(checkpoint["policy_state_dict"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     loss = checkpoint["loss"]
-    step = checkpoint["step"]
     print(f"Loaded checkpoint at epoch {start_epoch}")
 
   # TODO: Maybe check that these are the same as what is loaded from checkpoint?
+  jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
+  jnt_range_high = env.unwrapped.model.jnt_range[:6, 1]
   bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
   bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
   params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
 
   trainer = Trainer(params)
 
+  
+
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
   hidden_layer_dims = '_'.join([str(x.out_features) for x in policy.actor[:-1] if 'out_features' in x.__dict__])
   OUTPUT_FOLDER=f'ckpts/lite6_pick_place_h{hidden_layer_dims}_{curr_time}'
   Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-  writer = SummaryWriter(log_dir=f"runs/lite6_pick_place/{curr_time}")
+  if args.eval:
+    print("Evaluating...")
+    policy.eval()
+    print(f"Epoch: {start_epoch}, steps: {step}, loss: {loss.item()}")
+    avg_reward, frames = trainer.evaluate_policy(env, policy, 5)
+    media.write_video(OUTPUT_FOLDER + f"/epoch_{start_epoch}.mp4", frames, fps=env.metadata["render_fps"])
+  
+  else:
+    writer = SummaryWriter(log_dir=f"runs/lite6_pick_place/{curr_time}")
 
-  n_epoch = 20
-  step = 0
-  for epoch in range(start_epoch, start_epoch+n_epoch):
-    policy.train()
-    end = time.time()
-    for batch in tqdm(dataloader):
-      data_load_time = time.time()
-
-      batch = trainer.batched_preprocess(batch)
-
-      # Send data tensors from CPU to GPU
-      state = batch["preprocessed.observation.state.qpos"].to(device, non_blocking=True)
-      image = batch["observation.pixels.side"].to(device, non_blocking=True)
-
-      # Because we sample the action ahead in time [0, 0.1], it has an extra dimension, and we select the last dim
-      a_hat = batch["preprocessed.action.state.qpos"][:, -1, :].to(device, non_blocking=True)
-      # print([(x, batch[x]) for x in batch if "pixels" not in x])
-
-      gpu_load_time = time.time()
-
-      a_pred = policy.predict(state, image)
-
-      pred_time = time.time()
-
-      loss = loss_fn(a_pred, a_hat)
-      optimizer.zero_grad()
-      loss.backward()
-      optimizer.step()
-
-      train_time = time.time()
-
-      writer.add_scalar("Loss/train", loss.item(), step)
-      writer.add_scalar("Time/data_load", data_load_time - end, step)
-      writer.add_scalar("Time/gpu_transfer", gpu_load_time - data_load_time, step)
-      writer.add_scalar("Time/pred_time", pred_time - gpu_load_time, step)
-      writer.add_scalar("Time/train_time", train_time - pred_time, step)
-      writer.add_scalar("Time/step_time", time.time() - end, step)
-
-      step += 1
+    end_epoch = start_epoch+args.n_epochs
+    for epoch in range(start_epoch, end_epoch+1):
+      policy.train()
       end = time.time()
-    
-    if epoch % 2 == 0 or epoch == n_epoch-1:
-      # Evaluate
-      policy.eval()
-      print(f"Epoch: {epoch+1}/{n_epoch}, steps: {step}, loss: {loss.item()}")
-      avg_reward, frames = trainer.evaluate_policy(env, policy, 5)
-      media.write_video(OUTPUT_FOLDER + f"/epoch_{epoch}.mp4", frames, fps=env.metadata["render_fps"])
-      print("avg reward: ", avg_reward)
-      writer.add_scalar("Reward/val", avg_reward, step)
-      # _, frames = evaluate_policy(policy, env, 1, visualise=True)
-      writer.add_images("Image", np.stack([frames[x].transpose(2, 0, 1) for x in range(0, len(frames), 50)], axis=0), step)
-    
-      writer.add_scalar("Time/eval_time", time.time() - end, step)
+      for batch in tqdm(dataloader):
+        data_load_time = time.time()
+
+        batch = trainer.batched_preprocess(batch)
+
+        # Send data tensors from CPU to GPU
+        state = batch["preprocessed.observation.state.qpos"].to(device, non_blocking=True)
+        image_side = batch["observation.pixels.side"].to(device, non_blocking=True)
+        image_gripper = batch["observation.pixels.gripper"].to(device, non_blocking=True)
+
+        # Because we sample the action ahead in time [0, 0.1], it has an extra dimension, and we select the last dim
+        a_hat = batch["preprocessed.action.state.qpos"][:, -1, :].to(device, non_blocking=True)
+        # print([(x, batch[x]) for x in batch if "pixels" not in x])
+
+        gpu_load_time = time.time()
+
+        a_pred = policy.predict(state, image_side, image_gripper)
+
+        pred_time = time.time()
+
+        loss = loss_fn(a_pred, a_hat)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        train_time = time.time()
+
+        writer.add_scalar("Loss/train", loss.item(), step)
+        writer.add_scalar("Time/data_load", data_load_time - end, step)
+        writer.add_scalar("Time/gpu_transfer", gpu_load_time - data_load_time, step)
+        writer.add_scalar("Time/pred_time", pred_time - gpu_load_time, step)
+        writer.add_scalar("Time/train_time", train_time - pred_time, step)
+        writer.add_scalar("Time/step_time", time.time() - end, step)
+
+        step += 1
+        end = time.time()
+      
+      if epoch % 2 == 0 or epoch == end_epoch-1:
+        # Evaluate
+        policy.eval()
+        print(f"Epoch: {epoch}/{end_epoch}, steps: {step}, loss: {loss.item()}")
+        avg_reward, frames = trainer.evaluate_policy(env, policy, 5)
+        media.write_video(OUTPUT_FOLDER + f"/epoch_{epoch}.mp4", frames, fps=env.metadata["render_fps"])
+        print("avg reward: ", avg_reward)
+        writer.add_scalar("Reward/val", avg_reward, step)
+        # _, frames = evaluate_policy(policy, env, 1, visualise=True)
+        writer.add_images("Image", np.stack([frames[x].transpose(2, 0, 1) for x in range(0, len(frames), 50)], axis=0), step)
+      
+        writer.add_scalar("Time/eval_time", time.time() - end, step)
 
 
-    if epoch % 10 == 0 or epoch == n_epoch-1:
-      torch.save({
-              'epoch': epoch,
-              'step': step,
-              'params': params,
-              'policy_state_dict': policy.state_dict(),
-              'optimizer_state_dict': optimizer.state_dict(),
-              'loss': loss,
-              }, OUTPUT_FOLDER + f'/epoch_{epoch}.pt')
-    
-  writer.flush()
+      if epoch % 10 == 0 or epoch == end_epoch-1:
+        torch.save({
+                'epoch': epoch,
+                'step': step,
+                'params': params,
+                'policy_state_dict': policy.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': loss,
+                }, OUTPUT_FOLDER + f'/epoch_{epoch}.pt')
+      
+    writer.flush()
 
-  writer.close()
+    writer.close()
 
