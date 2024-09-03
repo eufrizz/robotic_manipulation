@@ -187,7 +187,7 @@ class Trainer:
         done = terminated | truncated | done
         step += 1
       
-      avg_reward += rewards[-1]/n
+      avg_reward += sum(rewards)/len(rewards)
     
       return avg_reward, frames
 
@@ -235,8 +235,8 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.utils import hf_transform_to_torch
-
-  dataset = load_from_disk("datasets/pickup/scripted_trajectories_50_2024-08-02_12-49-56.hf")
+  dataset_path = "datasets/grasp_50_2024-09-01_18-37-43.hf"
+  dataset = load_from_disk(dataset_path)
   if "from" not in dataset.column_names:
     first_frames=dataset.filter(lambda example: example['frame_index'] == 0)
     from_idxs = torch.tensor(first_frames['index'])
@@ -250,7 +250,7 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.lerobot_dataset import LeRobotDataset, CODEBASE_VERSION
-  lerobot_dataset = LeRobotDataset.from_preloaded(root=Path("datasets/scripted_trajectories_50_2024-08-02_12-49-56.hf"),
+  lerobot_dataset = LeRobotDataset.from_preloaded(root=Path(dataset_path),
           split="train",
           delta_timestamps={"action.qpos": [0, 0.1], "action.gripper": [0, 0.1]},
           # additional preloaded attributes
@@ -275,7 +275,7 @@ if __name__ == "__main__":
   
 
   policy = MLPPolicy([64, 64, 64]).to(device)
-  optimizer = torch.optim.Adam(policy.parameters(), lr=5e-4)
+  optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
   loss_fn = torch.nn.MSELoss()
 
   if args.checkpoint is None:
@@ -283,7 +283,7 @@ if __name__ == "__main__":
     start_epoch = 0
     step = 0
     params = {}
-    params["normalize_qpos"] = False
+    params["normalize_qpos"] = True
     loss=torch.tensor(0)
 
   else:
@@ -309,7 +309,7 @@ if __name__ == "__main__":
 
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
   hidden_layer_dims = '_'.join([str(x.out_features) for x in policy.actor[:-1] if 'out_features' in x.__dict__])
-  OUTPUT_FOLDER=f'ckpts/lite6_pick_place_h{hidden_layer_dims}_{curr_time}'
+  OUTPUT_FOLDER=f'ckpts/lite6_grasp_h{hidden_layer_dims}_{curr_time}'
   Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
   if args.eval:
@@ -320,7 +320,7 @@ if __name__ == "__main__":
     media.write_video(OUTPUT_FOLDER + f"/epoch_{start_epoch}.mp4", frames, fps=env.metadata["render_fps"])
   
   else:
-    writer = SummaryWriter(log_dir=f"runs/lite6_pick_place/{curr_time}")
+    writer = SummaryWriter(log_dir=f"runs/lite6_grasp/{curr_time}")
 
     end_epoch = start_epoch+args.n_epochs
     for epoch in range(start_epoch, end_epoch+1):
