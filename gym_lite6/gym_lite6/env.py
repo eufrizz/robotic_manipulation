@@ -295,15 +295,30 @@ class UfactoryLite6Env(gym.Env):
         # return env
 
 
-    def reset(self, seed=None, options=None, state=None):
+    def reset(self, seed=None, options=None, qpos=None, box_pos=None, box_quat=None):
         """
         If state is specified, it directly sets the mujoco qpos. Otherwise it is reset to a random state
         """
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
 
-        if state is not None:
-            self.data.qpos = state
+        if box_pos is None:
+            box_pos = self.object_space.sample()
+        # Ensure box is above the floor
+        elif box_pos[2] < self.object_space.sample()[2]:
+            box_pos[2] = self.object_space.sample()[2]
+        if box_quat is None:
+            z_rot = np.random.rand()
+            # Quaternion orientation - normalise
+            box_quat = np.array([1-z_rot, 0, 0, z_rot])
+            box_quat = box_quat / np.linalg.norm(box_quat)
+        
+        self.data.qpos[8:11] = box_pos[:3]
+        self.data.qpos[11:] = box_quat
+        
+
+        if qpos is not None:
+            self.data.qpos[:6] = qpos
             mujoco.mj_forward(self.model, self.data)
 
         else:
@@ -311,14 +326,6 @@ class UfactoryLite6Env(gym.Env):
 
             # Divide by two to get angles that are less extreme
             self.data.qpos[:self.dof] = self.observation_space["state"]["qpos"].sample()/2
-            # gripper 6,7
-            box_pose = self.object_space.sample()
-            # Drop from height to avoid intersection with ground
-            self.data.qpos[8:11] = box_pose[:3]
-            # Quaternion pose - normalise
-            z_rot = np.random.rand()
-            quat = np.array([1-z_rot, 0, 0, z_rot])
-            self.data.qpos[11:] = quat / np.linalg.norm(quat)
             mujoco.mj_forward(self.model, self.data)
         
             # Ensure robot is not self-intersecting
