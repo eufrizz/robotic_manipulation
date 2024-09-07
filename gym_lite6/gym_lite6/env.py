@@ -301,9 +301,9 @@ class UfactoryLite6Env(gym.Env):
         """
         super().reset(seed=seed)
         mujoco.mj_resetData(self.model, self.data)
-
+        
         if box_pos is None:
-            box_pos = self.object_space.sample()
+            box_pos = self.object_space.sample()[:3]
         # Ensure box is above the floor
         elif box_pos[2] < self.object_space.sample()[2]:
             box_pos[2] = self.object_space.sample()[2]
@@ -313,7 +313,7 @@ class UfactoryLite6Env(gym.Env):
             box_quat = np.array([1-z_rot, 0, 0, z_rot])
             box_quat = box_quat / np.linalg.norm(box_quat)
         
-        self.data.qpos[8:11] = box_pos[:3]
+        self.data.qpos[8:11] = box_pos
         self.data.qpos[11:] = box_quat
         
 
@@ -322,10 +322,8 @@ class UfactoryLite6Env(gym.Env):
             mujoco.mj_forward(self.model, self.data)
 
         else:
-            mujoco.mj_resetData(self.model, self.data)
-
             # Divide by two to get angles that are less extreme
-            self.data.qpos[:self.dof] = self.observation_space["state"]["qpos"].sample()/2
+            self.data.qpos[self.joint_qpos] = self.observation_space["state"]["qpos"].sample()/2
             mujoco.mj_forward(self.model, self.data)
         
             # Ensure robot is not self-intersecting
@@ -333,7 +331,6 @@ class UfactoryLite6Env(gym.Env):
             while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 17))):
                 self.data.qpos[self.joint_qpos] = self.observation_space["state"]["qpos"].sample()/2
                 mujoco.mj_forward(self.model, self.data)
-
 
         observation = self._get_observation()
         info = {}
