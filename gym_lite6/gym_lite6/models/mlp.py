@@ -24,6 +24,7 @@ class MLPPolicy(torch.nn.Module):
     for i in range(len(hidden_layer_dims) - 1):
       actor.append(torch.nn.Linear(hidden_layer_dims[i], hidden_layer_dims[i+1]))
       actor.append(torch.nn.ReLU())
+      # actor.append(torch.nn.Dropout(p=0.2))
     actor.append(torch.nn.Linear(hidden_layer_dims[-1], output_size))
     return torch.nn.Sequential(*actor)
 
@@ -57,7 +58,7 @@ class MLPPolicy(torch.nn.Module):
 
 
 # Not so much for training but more for using the model
-class Trainer:
+class Interface:
   def __init__(self, params) -> None:
     # self.env = env # This breaks caching of preprocess_data
 
@@ -117,10 +118,10 @@ class Trainer:
     return batch
    
   
-  def evaluate_policy(self, env, policy, n):
+  def evaluate_policy(self, env, policy, n, qpos0=None, box_pos0=None, box_quat0=None):
     avg_reward = 0
     for i in range(n):
-      numpy_observation, info = env.reset()
+      numpy_observation, info = env.reset(qpos=qpos0, box_pos=box_pos0, box_quat=box_quat0)
 
       # Prepare to collect every rewards and all the frames of the episode,
       # from initial state to final state.
@@ -175,7 +176,7 @@ class Trainer:
         done = terminated | truncated | done
         step += 1
       
-      avg_reward += rewards[-1]/n
+      avg_reward += sum(rewards)/len(rewards)/n
     
-      return avg_reward, frames
+    return avg_reward, frames
 
