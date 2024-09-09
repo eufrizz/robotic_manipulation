@@ -35,11 +35,8 @@ if __name__ == "__main__":
 
   args = parser.parse_args()
 
-  device = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
-
-
   # %%
-  task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
+  task = gym_lite6.pickup_task.GraspAndLiftTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
   env = gym.make(
       "UfactoryCubePickup-v0",
       task=task,
@@ -82,37 +79,48 @@ if __name__ == "__main__":
 
 
   # %%
-  dataloader = DataLoader(
-          lerobot_dataset,
-          num_workers=4,
-          batch_size=128,
-          shuffle=True,
-          # sampler=sampler,
-          pin_memory=device.type != "cpu",
-          drop_last=False,
-      )
   
-  policy = gym_lite6.models.mlp.MLPPolicy([64, 64, 64]).to(device)
-  optimizer = torch.optim.Adam(policy.parameters(), lr=1e-3)
-  loss_fn = torch.nn.MSELoss()
-
-  if args.checkpoint is None:
+  
+  params = {}
+  if args.checkpoint is not None:
+    checkpoint = torch.load(args.checkpoint)
+    start_epoch = checkpoint["epoch"] + 1
+    step = checkpoint["step"]
+    params = checkpoint["params"]
+  else:
     print("train from scratch")
     start_epoch = 0
     step = 0
     params = {}
     params["normalize_qpos"] = True
     params["dropout"] = False
-    loss=torch.tensor(0)
-  else:
-    checkpoint = torch.load(args.checkpoint)
-    start_epoch = checkpoint["epoch"] + 1
-    step = checkpoint["step"]
-    params = checkpoint["params"]
+    params["hidden_layer_dims"] = [64, 64, 64]
+
+  # Override these params
+  params["lr"] = 1e-3
+  params["device"] = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
+
+  policy = gym_lite6.models.mlp.MLPPolicy(params["hidden_layer_dims"], dropout=params["dropout"]).to(params["device"])
+  loss=torch.tensor(0)
+  optimizer = torch.optim.Adam(policy.parameters(), lr=params["lr"])
+
+  if args.checkpoint is not None:
     policy.load_state_dict(checkpoint["policy_state_dict"])
+    optimizer = torch.optim.Adam(policy.parameters(), lr=params["lr"])
     optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     loss = checkpoint["loss"]
     print(f"Loaded checkpoint at epoch {start_epoch}")
+  
+  loss_fn = torch.nn.MSELoss()
+  dataloader = DataLoader(
+          lerobot_dataset,
+          num_workers=4,
+          batch_size=128,
+          shuffle=True,
+          # sampler=sampler,
+          pin_memory=params["device"].type != "cpu",
+          drop_last=False,
+      )
 
   # TODO: Maybe check that these are the same as what is loaded from checkpoint?
   jnt_range_low = env.unwrapped.model.jnt_range[:6, 0]
@@ -120,7 +128,6 @@ if __name__ == "__main__":
   bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
   bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
   params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
-  params["device"] = device
 
   interface = gym_lite6.models.mlp.Interface(params)
   
@@ -150,12 +157,12 @@ if __name__ == "__main__":
         batch = interface.batched_preprocess(batch)
 
         # Send data tensors from CPU to GPU
-        state = batch["preprocessed.observation.state.qpos"].to(device, non_blocking=True)
-        image_side = batch["observation.pixels.side"].to(device, non_blocking=True)
-        image_gripper = batch["observation.pixels.gripper"].to(device, non_blocking=True)
+        state = batch["preprocessed.observation.state.qpos"].to(params["device"], non_blocking=True)
+        image_side = batch["observation.pixels.side"].to(params["device"], non_blocking=True)
+        image_gripper = batch["observation.pixels.gripper"].to(params["device"], non_blocking=True)
 
         # Because we sample the action ahead in time [0, 0.1], it has an extra dimension, and we select the last dim
-        a_hat = batch["preprocessed.action.state.qpos"][:, -1, :].to(device, non_blocking=True)
+        a_hat = batch["preprocessed.action.state.qpos"][:, -1, :].to(params["device"], non_blocking=True)
         # print([(x, batch[x]) for x in batch if "pixels" not in x])
 
         gpu_load_time = time.time()
