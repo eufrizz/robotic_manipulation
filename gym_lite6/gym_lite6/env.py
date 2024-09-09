@@ -8,14 +8,6 @@ from copy import deepcopy
 
 MODEL_DIR = Path(__file__).parent.parent.resolve() / "models"  # note: absolute path
 
-def compare(var1, var2):
-    for attr in dir(var1):
-        print(f"{attr}:", getattr(var1, attr))
-        print(f"{attr}:", getattr(var2, attr))
-        print(var1 == var2)
-        print()
-
-
 class UfactoryLite6Env(gym.Env):
     metadata = {"render_modes": ["rgb_array"], "render_fps": 30}
 

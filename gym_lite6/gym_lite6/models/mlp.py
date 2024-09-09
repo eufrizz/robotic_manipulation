@@ -134,7 +134,7 @@ class Interface:
 
       step = 0
       done = False
-      while not done and len(frames) < 300:
+      while not done:
         # Prepare observation for the policy running in Pytorch
         # Get qpos in range (-1, 1), gripper is already in range (-1, 1)
         qpos = torch.from_numpy(numpy_observation["state"]["qpos"]).unsqueeze(0)

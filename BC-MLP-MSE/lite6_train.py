@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.utils import hf_transform_to_torch
-  dataset_path = "datasets/one_trajectory_25_2024-09-06_20-44-13.hf"
+  dataset_path = "datasets/45_diverse_5_single_2024-09-07_23-10-05.hf"
   dataset = load_from_disk(dataset_path)
   if "from" not in dataset.column_names:
     first_frames=dataset.filter(lambda example: example['frame_index'] == 0)
@@ -102,8 +102,8 @@ if __name__ == "__main__":
     step = 0
     params = {}
     params["normalize_qpos"] = True
+    params["dropout"] = False
     loss=torch.tensor(0)
-
   else:
     checkpoint = torch.load(args.checkpoint)
     start_epoch = checkpoint["epoch"] + 1
@@ -120,6 +120,7 @@ if __name__ == "__main__":
   bounds_centre = torch.tensor((jnt_range_low + jnt_range_high) / 2, dtype=torch.float32)
   bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
   params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
+  params["device"] = device
 
   interface = gym_lite6.models.mlp.Interface(params)
   
