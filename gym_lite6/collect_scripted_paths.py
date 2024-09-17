@@ -71,7 +71,7 @@ def record_episodes(env, policy, dataset_dir, n=1, len=300):
     # media.show_video(data["observation"]["pixels"])
 
 
-task = gym_lite6.pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
+task = gym_lite6.pickup_task.GraspAndLiftTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
 
 env = gym.make(
     "UfactoryCubePickup-v0",

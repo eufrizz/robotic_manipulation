@@ -2,7 +2,7 @@ import torch
 import torchvision
 
 class MLPPolicy(torch.nn.Module):
-  def __init__(self, hidden_layer_dims, state_dims=9):
+  def __init__(self, hidden_layer_dims, state_dims=9, dropout=False):
     """
     state_dims: 6 for arm, 3 for gripper
     """
@@ -13,18 +13,19 @@ class MLPPolicy(torch.nn.Module):
     self.img_feature_extractor_side = self._create_img_feature_extractor()
     self.img_feature_extractor_gripper = self._create_img_feature_extractor()
     # Resnet output is 1x512, 2 bits for gripper
-    self.actor = self._create_actor(512*2 + state_dims, hidden_layer_dims, state_dims)
+    self.actor = self._create_actor(512*2 + state_dims, hidden_layer_dims, state_dims, dropout)
 
     self.sigmoid = torch.nn.Sigmoid()
   
-  def _create_actor(self, input_size, hidden_layer_dims, output_size):
+  def _create_actor(self, input_size, hidden_layer_dims, output_size, dropout):
     actor = []
     actor.append(torch.nn.Linear(input_size, hidden_layer_dims[0]))
     actor.append(torch.nn.ReLU())
     for i in range(len(hidden_layer_dims) - 1):
       actor.append(torch.nn.Linear(hidden_layer_dims[i], hidden_layer_dims[i+1]))
       actor.append(torch.nn.ReLU())
-      # actor.append(torch.nn.Dropout(p=0.2))
+      if dropout:
+        actor.append(torch.nn.Dropout(p=0.3))
     actor.append(torch.nn.Linear(hidden_layer_dims[-1], output_size))
     return torch.nn.Sequential(*actor)
 

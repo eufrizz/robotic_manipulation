@@ -277,7 +277,7 @@ class UfactoryLite6Env(gym.Env):
         # if "cube" in task_name:
         #     xml_path = MODEL_DIR / "cube_pickup.xml"
         #     physics = mujoco.Physics.from_xml_path(str(xml_path))
-        #     # task = CubePickupTask()
+        #     # task = CubeGraspAndLiftTask()
         # else:
         #     raise NotImplementedError(task_name)
 

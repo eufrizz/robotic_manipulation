@@ -2,7 +2,7 @@ import numpy as np
 import mediapy as media
 import mujoco
 import numpy as np
-from gym_lite6.pickup_task import PickupTask
+from gym_lite6.pickup_task import GraspAndLiftTask
 
 scene_path = "models/cube_pickup.xml"
 model = mujoco.MjModel.from_xml_path(scene_path)
@@ -16,7 +16,7 @@ camera.elevation = -15
 camera.azimuth = -130
 camera.lookat = (0, 0, 0.3)
 
-task = PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
+task = GraspAndLiftTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
 
 camera.distance = 0.5
 camera.elevation = -10

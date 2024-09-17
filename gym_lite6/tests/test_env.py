@@ -8,7 +8,7 @@ import pytest
 class TestLite6Env:
     @pytest.fixture(params=[{"action_type":"qpos"}, {"action_type":"qvel"}])
     def env(self, request):
-        task = pickup_task.PickupTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
+        task = pickup_task.GraspAndLiftTask('gripper_left_finger', 'gripper_right_finger', 'box', 'floor')
         env = gym.make(
                 "UfactoryCubePickup-v0",
                 task=task,

@@ -5,7 +5,7 @@ import mediapy as media
 import torch
 import torchvision
 # torch.multiprocessing.set_start_method('spawn')
-import gym_lite6.env, gym_lite6.pickup_task, gym_lite6.models.mlp
+import gym_lite6.env, gym_lite6.pickup_task, gym_lite6.policies.mlp
 # %env MUJOCO_GL=egl # Had to export this before starting jupyter server
 # import mujoco
 import time
@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.utils import hf_transform_to_torch
-  dataset_path = "datasets/45_diverse_5_single_2024-09-07_23-10-05.hf"
+  dataset_path = "datasets/50_single_2024-09-16_15-07-50.hf"
   dataset = load_from_disk(dataset_path)
   if "from" not in dataset.column_names:
     first_frames=dataset.filter(lambda example: example['frame_index'] == 0)
@@ -87,6 +87,10 @@ if __name__ == "__main__":
     start_epoch = checkpoint["epoch"] + 1
     step = checkpoint["step"]
     params = checkpoint["params"]
+    if not "hidden_layer_dims" in params:
+      params["hidden_layer_dims"] = [64, 64, 64]
+    if not "dropout" in params:
+      params["dropout"] = False
   else:
     print("train from scratch")
     start_epoch = 0
@@ -100,7 +104,7 @@ if __name__ == "__main__":
   params["lr"] = 1e-3
   params["device"] = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
 
-  policy = gym_lite6.models.mlp.MLPPolicy(params["hidden_layer_dims"], dropout=params["dropout"]).to(params["device"])
+  policy = gym_lite6.policies.mlp.MLPPolicy(params["hidden_layer_dims"], dropout=params["dropout"]).to(params["device"])
   loss=torch.tensor(0)
   optimizer = torch.optim.Adam(policy.parameters(), lr=params["lr"])
 
@@ -129,7 +133,7 @@ if __name__ == "__main__":
   bounds_range = torch.tensor(jnt_range_high - jnt_range_low, dtype=torch.float32)
   params["joint_bounds"] = {"centre": bounds_centre, "range": bounds_range}
 
-  interface = gym_lite6.models.mlp.Interface(params)
+  interface = gym_lite6.policies.mlp.Interface(params)
   
 
   curr_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
@@ -188,7 +192,7 @@ if __name__ == "__main__":
         step += 1
         end = time.time()
       
-      if epoch % 2 == 0 or epoch == end_epoch-1:
+      if epoch in [1, 2, 4, 8, 16, 32, 64]:
         # Evaluate
         policy.eval()
         print(f"Epoch: {epoch}/{end_epoch}, steps: {step}, loss: {loss.item()}")
@@ -205,7 +209,8 @@ if __name__ == "__main__":
         writer.add_scalar("Time/eval_time", time.time() - end, step)
 
 
-      if epoch % 10 == 0 or epoch == end_epoch-1:
+      if epoch % 10 == 0 or epoch == end_epoch:
+      # if epoch in [1, 2, 4, 8, 10, 16, 20, 32, 64]:
         torch.save({
                 'epoch': epoch,
                 'step': step,
