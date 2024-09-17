@@ -1,6 +1,6 @@
 import numpy as np
 
-class PickupTask(object):
+class GraspAndLiftTask(object):
     def __init__(self, l_gripper_name, r_gripper_name, box_name, floor_name) -> None:
         """
         geom ids
@@ -43,7 +43,8 @@ class PickupTask(object):
               r_gripper_touching_box = True
         
         gripper_touching_ground = l_gripper_touching_ground or r_gripper_touching_ground
-        close_to_box = np.linalg.norm(data.body(self.l_gripper_name).xpos - data.body(self.box_name).xpos) < 0.07
+        dist_to_box = np.linalg.norm(data.body(self.l_gripper_name).xpos - data.body(self.box_name).xpos)
+        close_to_box = dist_to_box < 0.1
         box_above_height = data.body(self.box_name).xpos[2] > 0.2
 
         # print(f"gripper_touching_ground: {gripper_touching_ground}, box_touching_ground: {box_touching_ground}, l_gripper_touching_box: {l_gripper_touching_box}, r_gripper_touching_box: {r_gripper_touching_box}, close_to_box: {close_to_box}, box_above_height: {box_above_height}")
@@ -64,7 +65,7 @@ class PickupTask(object):
             assert(close_to_box)
             reward = 2
         elif close_to_box and not gripper_touching_ground:
-            reward = 1
+            reward = 1 - (dist_to_box / 0.1)
         
         return reward
   
@@ -107,7 +108,8 @@ class GraspTask(object):
               r_gripper_touching_box = True
         
         gripper_touching_ground = l_gripper_touching_ground or r_gripper_touching_ground
-        close_to_box = np.linalg.norm(data.body(self.l_gripper_name).xpos - data.body(self.box_name).xpos) < 0.07
+        dist_to_box = np.linalg.norm(data.body(self.l_gripper_name).xpos - data.body(self.box_name).xpos)
+        close_to_box = dist_to_box < 0.1
 
         # print(f"gripper_touching_ground: {gripper_touching_ground}, box_touching_ground: {box_touching_ground}, l_gripper_touching_box: {l_gripper_touching_box}, r_gripper_touching_box: {r_gripper_touching_box}, close_to_box: {close_to_box}, box_above_height: {box_above_height}")
 
@@ -119,7 +121,7 @@ class GraspTask(object):
             assert(close_to_box)
             reward = 2
         elif close_to_box and not gripper_touching_ground:
-            reward = 1
+            reward = 1 - (dist_to_box / 0.1)
         
         return reward
   
