@@ -172,9 +172,9 @@ class Interface:
         rewards.append(reward)
         frames.append(env.render())
 
-        # The rollout is considered done when the success state is reach (i.e. terminated is True),
-        # or the maximum number of iterations is reached (i.e. truncated is True)
-        done = terminated | truncated | done
+        # Normally we would exit on terminated = True, but we want our evaluation to continue
+        # so it can collect the full reward
+        done = truncated | done
         step += 1
       
       avg_reward += sum(rewards)/len(rewards)/n
