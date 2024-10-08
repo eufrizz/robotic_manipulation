@@ -1,5 +1,14 @@
-#include "mujoco.h"
+/*
+ * Using -I/Applications/MuJoCo.app/Contents/Frameworks/mujoco.framework/Versions/A/Headers didn't work for some reason, nothing past mujoco.h was included.
+ * I suspect it is because MuJoCo includes the other files with angle brackets <> so they need to be included as system files.
+ * Using -isystem to include them didn't fix it though
+ * Only thing that worked was copying/linking the files to /usr/local/include and then:
+ * clang++ --std=c++17 -o load_mujoco load_mujoco_model.cpp -I /usr/local/include/mujoco -L /usr/local/lib -l mujoco.3.2.2
+ */
+
+#include <mujoco/mujoco.h>
 #include <iostream>
+
 
 int main() {
     char error[1000];
