@@ -281,6 +281,19 @@ Seems that the OpenCV installation fails to have CUDA anyway?
 
 
 ### PyTorch with CUDA
+Found the released torch 2.3.0 binaries and torchivision 0.18.0 here: https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+wget the files and install with pip install /path/to/file.whl
+The names also had to be changed to be valid .whl files - this can be fixed by using the --content-disposition flag which follows the redirects and gets the right name
+```
+# Torch
+wget --content-disposition https://nvidia.box.com/shared/static/mp164asf3sceb570wvjsrezk1p4ftj8t.whl
+# Torchvision
+wget --content-disposition https://nvidia.box.com/shared/static/xpr06qe6ql3l6rj22cu3c45tz1wzi36p.whl
+```
+I installed it locally so that each venv can use without reinstallation. Just set up the venv with this: `python -m venv venv --system-site-packages`
+You'll then have to do `pip install --ignore-installed jupyter` to get jupyter to use the venv. You may need to reactivate the env
+
+#### Official method which didn't quite work
 Find the release you want here:
 https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform-release-notes/pytorch-jetson-rel.html#pytorch-jetson-rel
 
@@ -288,10 +301,9 @@ Then find the actual link to the whl here:
 https://developer.download.nvidia.com/compute/redist/jp/
 
 Then copy the link and install like this:
-pip3 install --no-cache hpip3 install --no-cache pip3 install --no-cache https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+07cecf4168.nv24.05.14710581-cp310-cp310-linux_aarch64.whl
+pip3 install --no-cache https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+07cecf4168.nv24.05.14710581-cp310-cp310-linux_aarch64.whl
 
 torch 2.4.0 worked, but there was no corresponding torchvision release, it would have to be installed from source. Tried this but seems also have to build torch from source.
-Found the released torch 2.3.0 binaries and torchivision 0.18.0 here: https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
 
 ## ROS MacOS
 Docker on macOS can't do net=host, you can only expose specified ports. It was really hard to find what ports DDS used (for ROS2 discovery), and I spent a bit of time playing with it but with no result, so I decided to forego docker. EDIT: I also didn't set ROS_DOMAIN_ID, so that could have screwed it up altogether
