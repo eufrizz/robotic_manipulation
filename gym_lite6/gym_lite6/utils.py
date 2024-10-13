@@ -91,8 +91,8 @@ def screw_interp(T_start, T_end, t, end_time):
 def plot_dict_of_arrays(ep_dict, x_ax, keys=None, title_prefix="", sharey=True):
   import matplotlib.pyplot as plt
 
-  if x_ax not in ep_dict:
-    raise KeyError("x_ax must be a member of ep_dict")
+  # if x_ax not in ep_dict:
+  #   raise KeyError("x_ax must be a member of ep_dict")
   if keys is None:
     keys = [key for key in ep_dict.keys() if key != x_ax]
     

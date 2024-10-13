@@ -305,6 +305,8 @@ pip3 install --no-cache https://developer.download.nvidia.com/compute/redist/jp/
 
 torch 2.4.0 worked, but there was no corresponding torchvision release, it would have to be installed from source. Tried this but seems also have to build torch from source.
 
+To then use it from a python venv, do `python venv --system-site-packages venv_name`, and `pip install -I <package>` to install packages over the top e.g. jupyte
+
 ## ROS MacOS
 Docker on macOS can't do net=host, you can only expose specified ports. It was really hard to find what ports DDS used (for ROS2 discovery), and I spent a bit of time playing with it but with no result, so I decided to forego docker. EDIT: I also didn't set ROS_DOMAIN_ID, so that could have screwed it up altogether
 
@@ -367,3 +369,9 @@ Theres a slight discrepancy between pixel size and image area in the OV2740 (RGB
 
 To calculate FOV: FOV = 2atan(sensor_size/2*f), in x or y. f is in metres
 If using pixel units, FOV = 2atan(res/2*fp), in x or y, where fp means focal length in pixels, and res is the resolution/number of pixels
+
+## Jupyter
+To strip jupyter notebooks of outputs when committing but leave them locally, do this (from [here](https://gist.github.com/33eyes/431e3d432f73371509d176d0dfb95b6e)):
+- git config filter.strip-notebook-output.clean 'jupyter nbconvert --ClearOutputPreprocessor.enabled=True --to=notebook --stdin --stdout --log-level=ERROR'  
+- `echo "*.ipynb filter=strip-notebook-output" > .gitattributes` in the folder with the notebooks
+- Optionally, if you've already commited outputs, run `git add --renormalize .` to clear them

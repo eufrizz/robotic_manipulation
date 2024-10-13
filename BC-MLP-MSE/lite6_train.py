@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
   # %%
   from lerobot.common.datasets.utils import hf_transform_to_torch
-  dataset_path = "datasets/50_single_2024-09-16_15-07-50.hf"
+  dataset_path = "datasets/grasp_100_2024-09-06_17-03-47.hf"
   dataset = load_from_disk(dataset_path)
   if "from" not in dataset.column_names:
     first_frames=dataset.filter(lambda example: example['frame_index'] == 0)
@@ -98,13 +98,16 @@ if __name__ == "__main__":
     params = {}
     params["normalize_qpos"] = True
     params["dropout"] = False
-    params["hidden_layer_dims"] = [64, 64, 64]
+    params["hidden_layer_dims"] = [64, 64, 64, 64, 64]
+    params["use_obs_vel"] = True
 
   # Override these params
   params["lr"] = 1e-3
   params["device"] = torch.device("cuda") if torch.cuda.is_available() else torch.device("mps")
 
-  policy = gym_lite6.policies.mlp.MLPPolicy(params["hidden_layer_dims"], dropout=params["dropout"]).to(params["device"])
+  # 6 joint pos, 6 joint vel (optional), 3 one hot encoded gripper
+  input_state_dims = 6 + 6 + 3 if params["use_obs_vel"] else 6 + 3
+  policy = gym_lite6.policies.mlp.MLPPolicy(params["hidden_layer_dims"], input_state_dims=input_state_dims, dropout=params["dropout"]).to(params["device"])
   loss=torch.tensor(0)
   optimizer = torch.optim.Adam(policy.parameters(), lr=params["lr"])
 
@@ -209,8 +212,8 @@ if __name__ == "__main__":
         writer.add_scalar("Time/eval_time", time.time() - end, step)
 
 
-      if epoch % 10 == 0 or epoch == end_epoch:
-      # if epoch in [1, 2, 4, 8, 10, 16, 20, 32, 64]:
+      # if epoch % 10 == 0 or epoch == end_epoch:
+      if epoch in [1, 2, 4, 8, 10, 16, 20, 32, 40, 64]:
         torch.save({
                 'epoch': epoch,
                 'step': step,

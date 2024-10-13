@@ -2,7 +2,7 @@ import torch
 import torchvision
 
 class MLPPolicy(torch.nn.Module):
-  def __init__(self, hidden_layer_dims, state_dims=9, dropout=False):
+  def __init__(self, hidden_layer_dims, input_state_dims=9, output_dims=9, dropout=False):
     """
     state_dims: 6 for arm, 3 for gripper
     """
@@ -13,8 +13,7 @@ class MLPPolicy(torch.nn.Module):
     self.img_feature_extractor_side = self._create_img_feature_extractor()
     self.img_feature_extractor_gripper = self._create_img_feature_extractor()
     # Resnet output is 1x512, 2 bits for gripper
-    self.actor = self._create_actor(512*2 + state_dims, hidden_layer_dims, state_dims, dropout)
-
+    self.actor = self._create_actor(512*2 + input_state_dims, hidden_layer_dims, output_dims, dropout)
     self.sigmoid = torch.nn.Sigmoid()
   
   def _create_actor(self, input_size, hidden_layer_dims, output_size, dropout):
@@ -47,7 +46,7 @@ class MLPPolicy(torch.nn.Module):
     input = torch.hstack((state, img_features_side, img_features_gripper))
     out = self.actor(input)
     # Gripper sigmoid
-    out[:, 6:8] = self.sigmoid(out[:, 6:8])
+    out[:, -2:] = self.sigmoid(out[:, -2:])
     return out
 
   
@@ -113,8 +112,12 @@ class Interface:
       batch["observation.state.qpos"] = self.normalize_qpos(batch["observation.state.qpos"])
       batch["action.qpos"] = self.normalize_qpos(batch["action.qpos"])
     
+    if "use_obs_vel" in self.params and self.params["use_obs_vel"]:
+      batch["preprocessed.observation.state.qpos"] = torch.cat((batch["observation.state.qpos"], batch["observation.state.qvel"], observation_gripper), dim=-1)
+    else:
+      batch["preprocessed.observation.state.qpos"] = torch.cat((batch["observation.state.qpos"], observation_gripper), dim=-1)
+
     batch["preprocessed.action.state.qpos"] = torch.cat((batch["action.qpos"], action_gripper), dim=-1)
-    batch["preprocessed.observation.state.qpos"] = torch.cat((batch["observation.state.qpos"], observation_gripper), dim=-1)
 
     return batch
    
@@ -139,10 +142,11 @@ class Interface:
         # Prepare observation for the policy running in Pytorch
         # Get qpos in range (-1, 1), gripper is already in range (-1, 1)
         qpos = torch.from_numpy(numpy_observation["state"]["qpos"]).unsqueeze(0)
+        qvel = torch.from_numpy(numpy_observation["state"]["qvel"]).unsqueeze(0)
         gripper = self.embed_gripper(torch.tensor(numpy_observation["state"]["gripper"])).unsqueeze(0)
         if self.params["normalize_qpos"]:
           qpos = self.normalize_qpos(qpos)
-        state = torch.hstack((qpos, gripper))
+        state = torch.hstack((qpos, qvel, gripper))
         image_side = torch.from_numpy(numpy_observation["pixels"]["side"]).permute(2, 0, 1).unsqueeze(0) / 255
         image_gripper = torch.from_numpy(numpy_observation["pixels"]["gripper"]).permute(2, 0, 1).unsqueeze(0) / 255
         
