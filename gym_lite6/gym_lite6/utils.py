@@ -106,15 +106,14 @@ def plot_dict_of_arrays(ep_dict, x_ax, keys=None, title_prefix="", sharey=True):
     plt_data = np.array(ep_dict[key])
     fig, axs = plt.subplots(ncols=ncols, nrows=nrows, sharex=True, sharey=sharey, figsize=(ncols*2+0.5, nrows*2+1), constrained_layout=True)
 
-    for i in range(len_state):
-      # ax = plt.subplot(int(np.ceil(len_qpos/3)), 3, i+1)
-      if len_state > 1:
+    if len_state > 1:
+      for i in range(len_state):
         ax = axs.flatten()[i]
         ax.plot(ep_dict[x_ax], plt_data[:, i])
         ax.set_title(i)
-      else:
-        ax = axs
-        ax.plot(ep_dict[x_ax], plt_data)
+    else:
+      ax = axs
+      ax.plot(ep_dict[x_ax], plt_data)
 
     # fig.add_subplot(111, frameon=False)
     plt.suptitle(f"{key}")
