@@ -159,6 +159,7 @@ class UfactoryLite6Env(gym.Env):
                 "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                 }
             )
+            self.disable_actuator_group(2)
         elif self.action_type == "qvel":
             self.action_space = spaces.Dict(
                 {
@@ -166,6 +167,7 @@ class UfactoryLite6Env(gym.Env):
                 "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                 }
             )
+            self.disable_actuator_group(1)
         else:
           raise KeyError(f"Invalid action type {self.action_type}")
 
@@ -331,7 +333,6 @@ class UfactoryLite6Env(gym.Env):
 
     def step(self, action):
         # assert action.ndim == 1
-        # TODO(rcadene): add info["is_success"] and info["success"] ?
         if self.action_type == "qpos":
             self.data.ctrl[self.joint_actuators] = action["qpos"]
         elif self.action_type == "qvel":
