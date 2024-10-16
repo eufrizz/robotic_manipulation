@@ -38,7 +38,7 @@ class UfactoryLite6Env(gym.Env):
         self.disable_actuator_group(2)
         # These are the indexes of our joints, from the XML
         self.joint_qpos = [0, 1, 2, 3, 4, 5]
-        self.dof = 6
+        self.dof = len(self.joint_qpos)
         
         self.voption = mujoco.MjvOption()
         # self.voption.frame = mujoco.mjtFrame.mjFRAME_SITE
@@ -102,24 +102,31 @@ class UfactoryLite6Env(gym.Env):
             raise NotImplementedError()
             self.observation_space = spaces.Dict(
                 {
-                  "pixels": spaces.Box(
-                      low=0,
-                      high=255,
-                      shape=(self.visualization_height, self.visualization_width, 3),
-                      dtype=np.uint8,
-                  ),
-                  "state": spaces.Dict(
-                      {
-                        "pose" : spaces.Box(
-                          low=-100.0,
-                          high=100.0,
-                          shape=(7,),
-                          dtype=np.float64,
-                        ),
-                        "gripper" : spaces.Discrete(3, start=-1) # This could be continuous but we don't get gripper position feedback
-                      }
-                  ),
-                }
+                "pixels": spaces.Dict(
+                    {
+                    "side": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.visualization_height, self.visualization_width, 3),
+                        dtype=np.uint8,
+                    ),
+                    "gripper": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.visualization_height, self.visualization_width, 3),
+                        dtype=np.uint8,
+                    ),
+                    }
+                ),
+                  "ee_pose": spaces.Dict(
+                    {
+                        "pos": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                        "quat": spaces.Box(low=0, high=1, shape=(4,), dtype=np.float64),
+                        "vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                        "ang_vel": spaces.Box(low=0, high=1, shape=(3,), dtype=np.float64),
+                    }
+                ),
+              }
             )
         elif self.obs_type == "pixels_state":
           self.observation_space = spaces.Dict(
@@ -140,13 +147,21 @@ class UfactoryLite6Env(gym.Env):
                     ),
                     }
                 ),
-                  "state": spaces.Dict(
+                "state": spaces.Dict(
                     {
-                      "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], shape=(6,), dtype=np.float64),
-                      "qvel": spaces.Box(low=-100, high=100, shape=(len(self.joint_qpos),), dtype=np.float64),
-                      "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+                        "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], shape=(6,), dtype=np.float64),
+                        "qvel": spaces.Box(low=-100, high=100, shape=(len(self.joint_qpos),), dtype=np.float64),
+                        "gripper": spaces.Discrete(3, start=-1) # release, off, grip
                     }
-                  ),
+                ),
+                "ee_pose": spaces.Dict(
+                    {
+                        "pos": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                        "quat": spaces.Box(low=-1e-10, high=1+1e-10, shape=(4,), dtype=np.float64),
+                        "vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                        "ang_vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                    }
+                ),
               }
           )
         else:
@@ -168,6 +183,15 @@ class UfactoryLite6Env(gym.Env):
                 }
             )
             self.disable_actuator_group(1)
+        # elif self.action_type == "ee_vel":
+        #     self.action_space = spaces.Dict(
+        #         {
+        #         "ee_vel": spaces.Box(low=-100, high=100, dtype=np.float64), # Arbitrarily high bounds
+        #         "ee_ang_vel": spaces.Box(low=-100, high=100, dtype=np.float64), # Arbitrarily high bounds
+        #         "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+        #         }
+        #     )
+        #     self.disable_actuator_group(1)
         else:
           raise KeyError(f"Invalid action type {self.action_type}")
 
@@ -254,40 +278,6 @@ class UfactoryLite6Env(gym.Env):
 
         return self.renderer.render()
 
-    # def _render(self, visualize=False):
-    #     assert self.render_mode == "rgb_array"
-    #     width, height = (
-    #         (self.visualization_width, self.visualization_height)
-    #         if visualize
-    #         else (self.visualization_width, self.visualization_height)
-    #     )
-    #     # if mode in ["visualize", "human"]:
-    #     #     height, width = self.visualize_height, self.visualize_width
-    #     # elif mode == "rgb_array":
-    #     #     height, width = self.visualization_height, self.visualization_width
-    #     # else:
-    #     #     raise ValueError(mode)
-    #     # TODO(rcadene): render and visualizer several cameras (e.g. angle, front_close)
-    #     image = self._env.physics.render(height=height, width=width, camera_id="top")
-        
-    #     return image
-
-    # def _make_env_task(self, task_name):
-        # time limit is controlled by StepCounter in env factory
-        # time_limit = float("inf")
-
-        # if "cube" in task_name:
-        #     xml_path = MODEL_DIR / "cube_pickup.xml"
-        #     physics = mujoco.Physics.from_xml_path(str(xml_path))
-        #     # task = CubeGraspAndLiftTask()
-        # else:
-        #     raise NotImplementedError(task_name)
-
-        # env = control.Environment(
-        #     physics, task, time_limit, control_timestep=DT, n_sub_steps=None, flat_observation=False
-        # )
-        # return env
-
 
     def reset(self, seed=None, options=None, qpos=None, box_pos=None, box_quat=None):
         """
@@ -333,12 +323,9 @@ class UfactoryLite6Env(gym.Env):
 
     def step(self, action):
         # assert action.ndim == 1
-        if self.action_type == "qpos":
-            self.data.ctrl[self.joint_actuators] = action["qpos"]
-        elif self.action_type == "qvel":
-            self.data.ctrl[self.joint_actuators] = action["qvel"]
-        else:
-          raise NotImplementedError(f"Invalid action type {self.action_type}")
+        if self.action_type not in action:
+          raise NotImplementedError(f"Action does not correspond to selected action type {self.action_type}")
+        self.data.ctrl[self.joint_actuators] = action[self.action_type]
         
         self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
         
@@ -358,16 +345,37 @@ class UfactoryLite6Env(gym.Env):
         # truncated = False
         return observation, reward, terminated, truncated, info
     
-    def _get_observation(self):
+    def _get_observation(self, ref_frame='end_effector'):
         if self.obs_type == "pixels_state":
-          qpos = deepcopy(self.data.qpos[:self.dof])
-          qvel = deepcopy(self.data.qvel[:self.dof])
-          gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
-          observation =  {"state": {"qpos": qpos, "qvel": qvel, "gripper": gripper}, "pixels": {"side": self.render(camera="side_cam"), "gripper": self.render(camera="gripper_cam")}}
+            qpos = deepcopy(self.data.qpos[:self.dof])
+            qvel = deepcopy(self.data.qvel[:self.dof])
+            gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
+
+            pos = self.data.site(ref_frame).xpos
+            quat = np.empty(4)
+            mujoco.mju_mat2Quat(quat, self.data.site(ref_frame).xmat)
+
+            # Velocity in end effector frame
+            ee_rot_vel = np.empty(6)
+            mujoco.mj_objectVelocity(self.model, self.data, mujoco.mjtObj.mjOBJ_SITE, self.model.site(ref_frame).id, ee_rot_vel, 1)
+            ang_vel = deepcopy(ee_rot_vel[:3])
+            vel = deepcopy(ee_rot_vel[3:])
+            observation = {
+                            "pixels": {
+                                "side": self.render(camera="side_cam"),
+                                "gripper": self.render(camera="gripper_cam")
+                            },
+                            "state": {
+                                "qpos": qpos, "qvel": qvel, "gripper": gripper
+                            },
+                            "ee_pose": {
+                                "pos": pos, "quat": quat, "vel": vel, "ang_vel": ang_vel
+                            },
+                        }
 
         else:
-          raise NotImplementedError()
-          observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
+            raise NotImplementedError()
+            observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
         return observation
         
 
@@ -507,8 +515,88 @@ class UfactoryLite6Env(gym.Env):
         dq = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, error)
         return dq
 
+    def solve_ik_vel(self, vel, ang_vel, ref_frame='world', local=False):
+        """
+        Given desired velocity and angular velocity of a site, solve for the joint velocities given the current state
+        Velocities are specified in the frame ref_frame
+        Solve v = J(theta)*qvel, using damped IK as above
+        """
+        # Transform to world frame
+        if local:
+            vec = np.hstack((ang_vel, vel))
+            res = np.empty(6)
+            mujoco.mju_transformSpatial(res, vec, 0, np.zeros(3), self.data.site(ref_frame).xpos, self.data.site(ref_frame).xmat)
+            v = np.hstack((res[3:], res[:3]))
+        else:
+            v = np.hstack((vel, ang_vel))
+
+        jac = np.zeros((6, self.model.nv))
+        site_id = self.model.site(ref_frame).id
+        # Get end-effector site Jacobian.
+        mujoco.mj_jacSite(self.model, self.data, jac[:3, :], jac[3:, :], site_id)
+        jac_arm = jac[:, self.joint_qpos]
+
+        diag = 1e-4 * np.eye(6) # damping
+        # Solve system of equations: J @ dq = error.
+        qvel = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, v)
+        return qvel
+
+    def forward_kinematics(self, qpos, ref_frame='end_effector'):
+        """
+        Given joint angles, return pos and quat of the reference frame
+        """
+
+        self.ik_data.qpos[self.joint_qpos] = qpos
+
+        mujoco.mj_forward(self.model, self.ik_data)
+
+        pos = self.ik_data.site(ref_frame).xpos
+        quat = np.empty(4)
+        mujoco.mju_mat2Quat(quat, self.ik_data.site(ref_frame).xmat)
+
+        return pos, quat
+    
+    def forward_vel_kinematics(self, qpos, qvel, ref_frame='end_effector', local=False):
+        """
+        Given joint angles and velocities, return pos, quat, velocity and angular velocity of the named site
+        Vel and ang_vel can either be in world frame or local frame
+        """
+
+        self.ik_data.qpos[self.joint_qpos] = deepcopy(qpos)
+        self.ik_data.qvel[self.joint_qpos] = deepcopy(qvel)
+
+        mujoco.mj_forward(self.model, self.ik_data)
+
+        # Jacobian method for velocities in world frame, v = J*qvel
+        # jac = np.zeros((6, self.model.nv))
+        # site_id = self.model.site(ref_frame).id
+        # mujoco.mj_jacSite(self.model, self.data, jac[:3, :], jac[3:, :], site_id)
+        # jac_arm = jac[:, self.joint_qpos]
+
+        # vel = jac_arm @ qvel
+        # ang_vel = vel[3:]
+        # vel = vel[:3]
+
+        # void mj_objectVelocity(const mjModel* m, const mjData* d, int objtype, int objid, mjtNum res[6], int flg_local);
+        ee_rot_vel = np.empty(6)
+        mujoco.mj_objectVelocity(self.model, self.ik_data, mujoco.mjtObj.mjOBJ_SITE, self.model.site(ref_frame).id, ee_rot_vel, 1 if local else 0)
+        ang_vel = ee_rot_vel[:3]
+        vel = ee_rot_vel[3:]
+
+        pos = self.ik_data.site(ref_frame).xpos
+        quat = np.empty(4)
+        mujoco.mju_mat2Quat(quat, self.ik_data.site(ref_frame).xmat)
+
+        return pos, quat, vel, ang_vel
+
     def disable_actuator_group(self, group_id):
         # Set the bitfield
         self.model.opt.disableactuator = 2**group_id
         # 0 is our gripper, here we just want the robot joints
         self.joint_actuators = [x for x in range(self.model.nu) if self.model.actuator(x).group != group_id and self.model.actuator(x).group != 0]
+
+    def get_body_pose(self, body):
+        """
+        Get the position and orientation of a body e.g. the box
+        """
+        return self.data.body(body).xpos, self.data.body(body).xquat

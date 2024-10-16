@@ -99,11 +99,12 @@ class GraspPolicy(ScriptedPolicyBase):
         self.stage += 1
         print(f"Transitioning to stage {self.stage}")
       elif data.time > self.trajectory_params[self.stage]["end_time"]:
-        qpos = self.env.unwrapped.solve_ik(self.trajectory_params[self.stage]["goal_pos"], self.trajectory_params[self.stage]["goal_quat"])
-        action["qpos"] = qpos
+        action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
+        action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
       else:
-        pos, quat = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        qpos = self.env.unwrapped.solve_ik(pos, quat)
+        action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
+        qpos = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
         action["qpos"] = qpos
       
     if self.stage == 1:
@@ -137,12 +138,13 @@ class GraspPolicy(ScriptedPolicyBase):
         self.stage += 1
         print(f"Transitioning to stage {self.stage}")
       elif data.time > self.trajectory_params[self.stage]["end_time"]:
-        qpos = self.env.unwrapped.solve_ik(self.trajectory_params[self.stage]["goal_pos"], self.trajectory_params[self.stage]["goal_quat"])
+        action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
+        action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
         action["qpos"] = qpos
       else:
-        pos, quat = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        qpos = self.env.unwrapped.solve_ik(pos, quat)
-        action["qpos"] = qpos
+        action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
     
     # Grip
     if self.stage == 2:
@@ -165,20 +167,23 @@ class GraspPolicy(ScriptedPolicyBase):
         self.trajectory_params[self.stage]["contact_time"] = data.time
       
       if "contact_time" not in self.trajectory_params[self.stage]:
-        # qpos = self.env.unwrapped.solve_ik(pos, quat)
         action["qpos"] = self.prev_action["qpos"]
+        action["pos"] = self.prev_action["pos"]
+        action["quat"] = self.prev_action["quat"]
       # If we've been gripping for a bit of time
       elif data.time > self.trajectory_params[self.stage]["contact_time"] + 0.2:
         self.stage += 1
         print(f"Transitioning to stage {self.stage}")
       else:
         action["qpos"] = self.prev_action["qpos"]
+        action["pos"] = self.prev_action["pos"]
+        action["quat"] = self.prev_action["quat"]
     
     if self.stage == 3:
       action = self.prev_action
       self.done = True
     
-    self.prev_action = action
+    self.prev_action = deepcopy(action)
     return action
 
 class LiftPolicy(ScriptedPolicyBase):
@@ -226,19 +231,19 @@ class LiftPolicy(ScriptedPolicyBase):
         self.stage += 1
         print(f"Transitioning to stage {self.stage}")
       elif data.time > self.trajectory_params[self.stage]["end_time"]:
-        qpos = self.env.unwrapped.solve_ik(self.trajectory_params[self.stage]["goal_pos"], self.trajectory_params[self.stage]["goal_quat"])
-        action["qpos"] = qpos
+        action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
+        action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
       else:
-        pos, quat = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        qpos = self.env.unwrapped.solve_ik(pos, quat)
-        action["qpos"] = qpos
+        action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
     
     # Finished
     if self.stage == 1:
       action = self.prev_action
       self.done = True
     
-    self.prev_action = action
+    self.prev_action = deepcopy(action)
     return action
 
 class GraspAndLiftPolicy(ScriptedPolicyBase):
