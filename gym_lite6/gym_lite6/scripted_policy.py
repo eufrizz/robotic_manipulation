@@ -104,8 +104,7 @@ class GraspPolicy(ScriptedPolicyBase):
         action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
       else:
         action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        qpos = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-        action["qpos"] = qpos
+        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
       
     if self.stage == 1:
       # Lower down around block
@@ -141,7 +140,6 @@ class GraspPolicy(ScriptedPolicyBase):
         action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
         action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
         action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-        action["qpos"] = qpos
       else:
         action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
         action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])

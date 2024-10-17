@@ -157,7 +157,7 @@ class UfactoryLite6Env(gym.Env):
                 "ee_pose": spaces.Dict(
                     {
                         "pos": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
-                        "quat": spaces.Box(low=-1e-10, high=1+1e-10, shape=(4,), dtype=np.float64),
+                        "quat": spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float64),
                         "vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
                         "ang_vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
                     }
