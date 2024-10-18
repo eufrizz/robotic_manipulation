@@ -9,7 +9,7 @@ from copy import deepcopy
 MODEL_DIR = Path(__file__).parent.parent.resolve() / "models"  # note: absolute path
 
 class UfactoryLite6Env(gym.Env):
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 30}
+    metadata = {"render_modes": ["rgb_array"]}
 
     """
     Action space: [qpos (6),        # joint angles
@@ -25,8 +25,9 @@ class UfactoryLite6Env(gym.Env):
         render_mode="rgb_array",
         visualization_width: int=640,
         visualization_height: int=480,
+        render_fps=30
     ):
-        # xml_file = MODEL_DIR/"lite6_viz.xml"
+        self.metadata["render_fps"] = render_fps
         super().__init__()
 
         self.model = mujoco.MjModel.from_xml_path(xml_file)
@@ -515,7 +516,7 @@ class UfactoryLite6Env(gym.Env):
         dq = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, error)
         return dq
 
-    def solve_ik_vel(self, vel, ang_vel, ref_frame='world', local=False):
+    def solve_ik_vel(self, vel, ang_vel, ref_frame='world', local=False, damping=1e-4):
         """
         Given desired velocity and angular velocity of a site, solve for the joint velocities given the current state
         Velocities are specified in the frame ref_frame
@@ -536,7 +537,7 @@ class UfactoryLite6Env(gym.Env):
         mujoco.mj_jacSite(self.model, self.data, jac[:3, :], jac[3:, :], site_id)
         jac_arm = jac[:, self.joint_qpos]
 
-        diag = 1e-4 * np.eye(6) # damping
+        diag = damping * np.eye(6) # damping
         # Solve system of equations: J @ dq = error.
         qvel = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, v)
         return qvel
