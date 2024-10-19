@@ -93,15 +93,16 @@ class TestLite6Env:
 
             # End effector frame
             # Make sure these movements are large enough to be seen in the output, because the IK solution is not exact, and the robot dynamics are involved
-            vel = np.array([1, -1, 0.5])
-            ang_vel = np.array([-1, 1, 1])
-            qvel = env.unwrapped.solve_ik_vel(vel, ang_vel, ref_frame='end_effector', local=True)
+            vels = [[1, -1, 0.5]]
+            ang_vels = [[-1, 1, 1]]
+            for vel, ang_vel in zip(vels, ang_vels):
+                qvel = env.unwrapped.solve_ik_vel(vel, ang_vel, ref_frame='end_effector', local=True)
 
-            action = {"qvel": qvel, "gripper": 0}
-            observation, reward, terminated, truncated, info = env.step(action)
-            # Due to the dynamics of how the model responds to velocity control, we just check that it's moving in the right directions, not the exact value
-            assert np.all(np.sign(observation["ee_pose"]["vel"]) == np.sign(vel)), f'{observation["ee_pose"]["vel"]}, {vel}'
-            assert np.all(np.sign(observation["ee_pose"]["ang_vel"]) == np.sign(ang_vel)), f'{observation["ee_pose"]["ang_vel"]}, {ang_vel}'
+                action = {"qvel": qvel, "gripper": 0}
+                observation, reward, terminated, truncated, info = env.step(action)
+                # Due to the dynamics of how the model responds to velocity control, we just check that it's moving in the right directions, not the exact value
+                assert np.all(np.sign(observation["ee_pose"]["vel"]) == np.sign(vel)), f'{observation["ee_pose"]["vel"]}, {vel}'
+                assert np.all(np.sign(observation["ee_pose"]["ang_vel"]) == np.sign(ang_vel)), f'{observation["ee_pose"]["ang_vel"]}, {ang_vel}'
 
         
 
