@@ -93,7 +93,7 @@ class GraspPolicy(ScriptedPolicyBase):
       # TODO: need gravity compensation for tighter tolerances here, including Z
       pos_reached = pos_xy_err < 3e-3 and pos_z_err < 5e-3
       quat_reached = quat_err < 5e-3
-      print(pos_xy_err, pos_z_err, quat_err)
+      # print(pos_xy_err, pos_z_err, quat_err)
 
       if pos_reached and quat_reached:
         self.stage += 1

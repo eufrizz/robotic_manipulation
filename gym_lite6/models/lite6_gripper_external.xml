@@ -183,12 +183,12 @@
     <position joint="joint5" group="1" class="size2" kp="8000" kv="600" ctrlrange="-2.1642 2.1642" />
     <position joint="joint6" group="1" class="size3" kp="8000" kv="600" ctrlrange="-6.28319 6.28319" />
 
-    <velocity joint="joint1" group="2" class="size1" kv="800" ctrlrange="-4 4" />
-    <velocity joint="joint2" group="2" class="size1" kv="800" ctrlrange="-4 4" />
-    <velocity joint="joint3" group="2" class="size2" kv="800" ctrlrange="-4 4" />
-    <velocity joint="joint4" group="2" class="size2" kv="800" ctrlrange="-4 4" />
-    <velocity joint="joint5" group="2" class="size2" kv="800" ctrlrange="-4 4" />
-    <velocity joint="joint6" group="2" class="size3" kv="800" ctrlrange="-4 4" />
+    <velocity joint="joint1" group="2" class="size1" kv="600" ctrlrange="-4 4" />
+    <velocity joint="joint2" group="2" class="size1" kv="600" ctrlrange="-4 4" />
+    <velocity joint="joint3" group="2" class="size2" kv="600" ctrlrange="-4 4" />
+    <velocity joint="joint4" group="2" class="size2" kv="600" ctrlrange="-4 4" />
+    <velocity joint="joint5" group="2" class="size2" kv="600" ctrlrange="-4 4" />
+    <velocity joint="joint6" group="2" class="size3" kv="600" ctrlrange="-4 4" />
     <!-- TODO: Should it also be halved due to doubling with the right finger? -->
     <motor name="gripper" joint="gripper_left_finger" group="0" forcerange="-10 10" ctrlrange="-10 10"/>
   </actuator>
