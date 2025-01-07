@@ -1,5 +1,4 @@
 <mujoco>
-    <include file="lite6_gripper_external.xml"/>
     <worldbody>
 
         <body name="box" pos="0.2 0.2 0.0">

@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from copy import deepcopy
 
+# MENAGERIE_DIR = Path(__file__).parent.parent.parent.resolve() / "mujoco_menagerie"  # note: absolute path
 MODEL_DIR = Path(__file__).parent.parent.resolve() / "models"  # note: absolute path
 
 class UfactoryLite6Env(gym.Env):
@@ -19,7 +20,9 @@ class UfactoryLite6Env(gym.Env):
     def __init__(
         self,
         task,
-        xml_file: str = str(MODEL_DIR/"cube_pickup_large.xml"),
+        model_xml: str = str(MODEL_DIR/"lite6_gripper_wide.xml"),
+        obj_xml: str = str(MODEL_DIR/"cube_pickup_large.xml"),
+        scene_xml: str = str(MODEL_DIR/"scene.xml"),
         obs_type="pixels_state",
         action_type="qpos",
         render_mode="rgb_array",
@@ -30,7 +33,7 @@ class UfactoryLite6Env(gym.Env):
         self.metadata["render_fps"] = render_fps
         super().__init__()
 
-        self.model = mujoco.MjModel.from_xml_path(xml_file)
+        self.model = self.load_xmls([scene_xml, model_xml, obj_xml])
         self.data = mujoco.MjData(self.model)
         # Separate data to do IK with that doesn't intefere with the sim
         self.ik_data = mujoco.MjData(self.model)
@@ -196,17 +199,34 @@ class UfactoryLite6Env(gym.Env):
         else:
           raise KeyError(f"Invalid action type {self.action_type}")
 
-        box_min_height = self.model.geom('box').size[2] + 1e-3
+        box_min_height = self.model.geom('box-1').size[2] + 1e-3
         self.object_space = spaces.Box(low=np.array([0.1, -0.3, box_min_height, 0, 0, 0, 0]), high=np.array([0.4, 0.3, box_min_height, 1, 1, 1, 1]), dtype=np.float32)
+
+    def load_xmls(self, xmls):
+        """
+        Using the first XML file as the base, add the other XML files to it
+        https://mujoco.readthedocs.io/en/latest/python.html#model-editing
+        Args:
+        - xmls: a list of paths to mujoco XML files
+        Returns:
+        - Compiled model
+        """
+        parent_spec = mujoco.MjSpec.from_file(xmls[0])
+        frame = parent_spec.worldbody.add_frame()
+        for xml in xmls[1:]:
+            spec = mujoco.MjSpec.from_file(xml)
+            frame.attach(spec, "", "-1")
+        return parent_spec.compile()
+
 
     def gripper_action_to_force(self, action):
         """
         Map (-1, 1) to (min_force, max_force)
         """
         force =  {
-          -1: self.model.actuator('gripper').ctrlrange[0],
+          -1: self.model.actuator('gripper-1').ctrlrange[0],
            0: 0,
-           1: self.model.actuator('gripper').ctrlrange[1],
+           1: self.model.actuator('gripper-1').ctrlrange[1],
         }[action]
         return force
 
@@ -312,8 +332,9 @@ class UfactoryLite6Env(gym.Env):
             mujoco.mj_forward(self.model, self.data)
         
             # Ensure robot is not self-intersecting
-            # TODO: don't hardcode geoms. 0 is floor, 1-16 are the robot arm, 17 - 18 are gripper fingers (which may be touching)
-            while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 17))):
+            # TODO: don't hardcode geoms. 0 is floor, 1-17 are the robot arm, 18 - 22 are gripper fingers (which may be touching)
+            while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 18))):
+                print(self.data.contact.geom.flatten())
                 self.data.qpos[self.joint_qpos] = self.observation_space["state"]["qpos"].sample()/2
                 mujoco.mj_forward(self.model, self.data)
 
@@ -328,7 +349,7 @@ class UfactoryLite6Env(gym.Env):
           raise NotImplementedError(f"Action does not correspond to selected action type {self.action_type}")
         self.data.ctrl[self.joint_actuators] = action[self.action_type]
         
-        self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
+        self.data.ctrl[self.model.actuator('gripper-1').id] = self.gripper_action_to_force(action["gripper"])
         
         timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
         for i in range(timesteps_per_frame):
@@ -346,11 +367,11 @@ class UfactoryLite6Env(gym.Env):
         # truncated = False
         return observation, reward, terminated, truncated, info
     
-    def _get_observation(self, ref_frame='end_effector'):
+    def _get_observation(self, ref_frame='end_effector-1'):
         if self.obs_type == "pixels_state":
             qpos = deepcopy(self.data.qpos[:self.dof])
             qvel = deepcopy(self.data.qvel[:self.dof])
-            gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
+            gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper-1').ctrl))
 
             pos = self.data.site(ref_frame).xpos
             quat = np.empty(4)
@@ -363,8 +384,8 @@ class UfactoryLite6Env(gym.Env):
             vel = deepcopy(ee_rot_vel[3:])
             observation = {
                             "pixels": {
-                                "side": self.render(camera="side_cam"),
-                                "gripper": self.render(camera="gripper_cam")
+                                "side": self.render(camera="side_cam-1"),
+                                "gripper": self.render(camera="gripper_cam-1")
                             },
                             "state": {
                                 "qpos": qpos, "qvel": qvel, "gripper": gripper
@@ -397,7 +418,7 @@ class UfactoryLite6Env(gym.Env):
 
         return x
 
-    def ik(self, x, pos, quat, radius=0.04, reg=1e-3, reg_target=None, ref_frame='end_effector'):
+    def ik(self, x, pos, quat, radius=0.04, reg=1e-3, reg_target=None, ref_frame='end_effector-1'):
         """Residual for inverse kinematics.
 
         Args:
@@ -486,7 +507,7 @@ class UfactoryLite6Env(gym.Env):
 
         return np.vstack((jac_pos, jac_quat, jac_reg))
     
-    def solve_dq(self, pos, quat, ref_frame='end_effector'):
+    def solve_dq(self, pos, quat, ref_frame='end_effector-1'):
         """
         Get dq, the error between the current pose and the desired, in state space, using damped ik.
         """
@@ -542,7 +563,7 @@ class UfactoryLite6Env(gym.Env):
         qvel = jac_arm.T @ np.linalg.solve(jac_arm @ jac_arm.T + diag, v)
         return qvel
 
-    def forward_kinematics(self, qpos, ref_frame='end_effector'):
+    def forward_kinematics(self, qpos, ref_frame='end_effector-1'):
         """
         Given joint angles, return pos and quat of the reference frame
         """
@@ -557,7 +578,7 @@ class UfactoryLite6Env(gym.Env):
 
         return pos, quat
     
-    def forward_vel_kinematics(self, qpos, qvel, ref_frame='end_effector', local=False):
+    def forward_vel_kinematics(self, qpos, qvel, ref_frame='end_effector-1', local=False):
         """
         Given joint angles and velocities, return pos, quat, velocity and angular velocity of the named site
         Vel and ang_vel can either be in world frame or local frame

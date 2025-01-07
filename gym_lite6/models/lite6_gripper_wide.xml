@@ -49,8 +49,8 @@
     <mesh file="visual/link5.stl"/>
     <mesh file="visual/link6.stl"/>
     <mesh file="visual/gripper_lite_body.stl"/>
-    <mesh file="visual/gripper_lite_left_finger_external.stl"/>
-    <mesh file="visual/gripper_lite_right_finger_external.stl"/>
+    <mesh file="visual/gripper_lite_left_finger_wide.stl"/>
+    <mesh file="visual/gripper_lite_right_finger_wide.stl"/>
     <mesh name="link_base_c" file="collision/link_base.stl"/>
     <mesh name="link1_c" file="collision/link1.stl"/>
     <mesh name="link2_c" file="collision/link2.stl"/>
@@ -59,13 +59,13 @@
     <mesh name="link5_c" file="collision/link5.stl"/>
     <mesh name="link6_c" file="collision/link6.stl"/>
     <mesh name="gripper_lite_body_c" file="collision/gripper_lite_body.stl"/>
-    <mesh file="collision/gripper_lite_left_finger_external_base.stl"/>
-    <mesh file="collision/gripper_lite_right_finger_external_base.stl"/>
-    <mesh file="collision/gripper_lite_left_finger_external_tip.stl"/>
-    <mesh file="collision/gripper_lite_right_finger_external_tip.stl"/>
+    <mesh file="collision/gripper_lite_left_finger_wide_base.stl"/>
+    <mesh file="collision/gripper_lite_right_finger_wide_base.stl"/>
+    <mesh file="collision/gripper_lite_left_finger_wide_tip.stl"/>
+    <mesh file="collision/gripper_lite_right_finger_wide_tip.stl"/>
   </asset>
 
-  <visual>  
+  <!-- <visual>  
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
     <rgba haze="0.15 0.25 0.35 1"/>
     <global azimuth="120" elevation="-20"/>
@@ -76,7 +76,7 @@
     <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
       markrgb="0.8 0.8 0.8" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
-  </asset>
+  </asset> -->
 
   <worldbody>
 
@@ -125,31 +125,26 @@
                   <site name="attachment_site"/>
                   <camera name="gripper_cam" class="realsense_d435i_rgb_640" mode="fixed" pos="0.1 0 0" euler="3.141592653589793 0.7 -1.5707963267948966"/>
                   <body name="gripper_body" pos="0 0 0" quat="1 0 0 0">
-                    <!-- TODO: inertia properties - these include the fingers -->
-                    <inertial pos="0.0 0.0 0.030" quat="1 0 0 0" mass="0.28"
-                    diaginertia="0.00047106 0.00033072 0.00025642" />
+                    <inertial pos="0.0 0.0 0.026" quat="1 0 0 0" mass="0.26"
+                      diaginertia="0.00016117 0.000118 0.00014455" />
                     <geom class="visual" mesh="gripper_lite_body" material="white"/>
                     <geom name="gripper_lite_body_c" class="collision" mesh="gripper_lite_body_c"/>
-                    <!-- TODO: inertial properties -->
-                    <!-- <body name="gripper_left_finger" pos="0 0 0.054" quat="1 0 0 0">
-                      <geom name="gripper_left_finger" mesh="gripper_lite_left_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="2 0.005 0.0001"/>
-                      <joint name="gripper_left_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="-0.0081 -1e-5" frictionloss="0.4" />     
-                    </body>
-                    <body name="gripper_right_finger" pos="0 0 0.054" quat="1 0 0 0">
-                      <geom name="gripper_right_finger" mesh="gripper_lite_right_finger_external" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="2 0.005 0.0001"/>
-                      <joint name="gripper_right_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="1e-5 0.0081" frictionloss="0.4" />
-                    </body> -->
+                    <!-- Finger and base separated to avoid convex hull preventing gripping -->
                     <body name="gripper_left_finger" pos="0 0 0.054" quat="1 0 0 0">
-                      <joint name="gripper_left_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="-0.0081 -1e-5" frictionloss="0.4" />     
-                      <geom mesh="gripper_lite_left_finger_external" class="visual" material="black"/>
-                      <geom name="gripper_left_finger_base" class="collision" mesh="gripper_lite_left_finger_external_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
-                      <geom name="gripper_left_finger" class="collision" mesh="gripper_lite_left_finger_external_tip" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
+                      <inertial pos="0.0 -0.01 0.01" quat="1 0 0 0" mass="0.024"
+                        diaginertia="1.961e-6 2.274e-6 1.238e-6" />
+                      <joint name="gripper_left_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="-0.0081 -1e-5" frictionloss="0.4" />
+                      <geom mesh="gripper_lite_left_finger_wide" class="visual" material="black"/>
+                      <geom name="gripper_left_finger_base" class="collision" mesh="gripper_lite_left_finger_wide_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
+                      <geom name="gripper_left_finger" class="collision" mesh="gripper_lite_left_finger_wide_tip" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="6 0.5 0.1"/>
                     </body>
                     <body name="gripper_right_finger" pos="0 0 0.054" quat="1 0 0 0">
+                      <inertial pos="0.0 0.01 0.01" quat="1 0 0 0" mass="0.024"
+                        diaginertia="1.961e-6 2.274e-6 1.238e-6" />
                       <joint name="gripper_right_finger" pos="0 0 0" axis="0 1 0" type="slide" limited="true" range="1e-5 0.0081" frictionloss="0.4" />
-                      <geom mesh="gripper_lite_right_finger_external" class="visual" material="black"/>
-                      <geom name="gripper_right_finger_base" class="collision" mesh="gripper_lite_right_finger_external_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="5 0.5 0.1"/>
-                      <geom name="gripper_right_finger" class="collision" mesh="gripper_lite_right_finger_external_tip" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.5 0.1"/>
+                      <geom mesh="gripper_lite_right_finger_wide" class="visual" material="black"/>
+                      <geom name="gripper_right_finger_base" class="collision" mesh="gripper_lite_right_finger_wide_base" material="black" condim="1" solimp="2 1 0.01" solref="0.01 1" friction="5 0.5 0.1"/>
+                      <geom name="gripper_right_finger" class="collision" mesh="gripper_lite_right_finger_wide_tip" material="black" condim="4" solimp="2 1 0.01" solref="0.01 1" friction="5 0.5 0.1"/>
                     </body>
                     <!-- End effector reference point is in the centre at the tip of the grippers -->
                     <site name="end_effector" pos="0 0 0.0811" size="0.001 0.001 0.001" rgba="0.5 0.5 0.5 0.2"/>
@@ -163,8 +158,8 @@
     </body>
 
     <!-- Scene objects for visualisation -->
-    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+    <!-- <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/> -->
 
     <!-- Free floating target body to visualise target/goal pose, with rectangular prism ends for distinction-->
     <body name="target" pos=".3 .3 .3" quat="1 0 0 0" mocap="true">
