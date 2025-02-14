@@ -334,7 +334,6 @@ class UfactoryLite6Env(gym.Env):
             # Ensure robot is not self-intersecting
             # TODO: don't hardcode geoms. 0 is floor, 1-17 are the robot arm, 18 - 22 are gripper fingers (which may be touching)
             while any(np.isin(self.data.contact.geom.flatten(), np.arange(1, 18))):
-                print(self.data.contact.geom.flatten())
                 self.data.qpos[self.joint_qpos] = self.observation_space["state"]["qpos"].sample()/2
                 mujoco.mj_forward(self.model, self.data)
 
@@ -432,7 +431,7 @@ class UfactoryLite6Env(gym.Env):
         """
 
         # Move the mocap body to the target
-        id = self.model.body('target').mocapid
+        id = self.model.body('target-1').mocapid
         self.ik_data.mocap_pos[id] =  pos
         self.ik_data.mocap_quat[id] = quat
 
@@ -444,7 +443,7 @@ class UfactoryLite6Env(gym.Env):
             mujoco.mj_kinematics(self.model, self.ik_data)
 
             # Position residual
-            res_pos = self.ik_data.site(ref_frame).xpos - self.ik_data.site('target').xpos
+            res_pos = self.ik_data.site(ref_frame).xpos - self.ik_data.site('target-1').xpos
             # print(self.ik_data.site(ref_frame).xpos)
             
             # Get the ref frame orientation (convert from rotation matrix to quaternion)
@@ -452,7 +451,7 @@ class UfactoryLite6Env(gym.Env):
             mujoco.mju_mat2Quat(ref_quat, self.ik_data.site(ref_frame).xmat)
 
             # Target quat, exploit the fact that the site is aligned with the body.
-            target_quat = self.ik_data.body('target').xquat
+            target_quat = self.ik_data.body('target-1').xquat
 
             # Orientation residual: quaternion difference.
             res_quat = np.empty(3)
@@ -466,7 +465,7 @@ class UfactoryLite6Env(gym.Env):
         
         return np.hstack(res)
     
-    def ik_jac(self, x, res=None, radius=0.04, reg=1e-3, ref_frame='end_effector'):
+    def ik_jac(self, x, res=None, radius=0.04, reg=1e-3, ref_frame='end_effector-1'):
         """Analytic Jacobian of inverse kinematics residual
 
         Args:
@@ -493,12 +492,12 @@ class UfactoryLite6Env(gym.Env):
         mujoco.mju_mat2Quat(ref_quat, self.ik_data.site(ref_frame).xmat)
         
         # Get Deffector, the 3x3 Jacobian for the orientation difference
-        target_quat = self.ik_data.body('target').xquat
+        target_quat = self.ik_data.body('target-1').xquat
         Deffector = np.empty((3, 3))
         mujoco.mjd_subQuat(target_quat, ref_quat, None, Deffector)
 
         # Rotate into target frame, multiply by subQuat Jacobian, scale by radius.
-        target_mat = self.ik_data.site('target').xmat.reshape(3, 3)
+        target_mat = self.ik_data.site('target-1').xmat.reshape(3, 3)
         mat =  Deffector.T @ target_mat.T
         jac_quat = radius * mat @ jac_quat
 
