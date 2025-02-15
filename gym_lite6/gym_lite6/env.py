@@ -241,29 +241,6 @@ class UfactoryLite6Env(gym.Env):
             return 1
         else:
             return 0
-        
-    def normalize_qpos(self, qpos):
-        """
-        map from joint bounds to (-1, 1)
-        TODO: Should this be (0, 1)?
-        """
-        if len(qpos.shape) == 1:
-            qpos = np.atleast_2d(qpos)
-        assert(qpos.shape[1] == 6), qpos
-        bounds_centre = torch.from_numpy((self.model.jnt_range[self.joint_qpos, 0] + self.model.jnt_range[self.joint_qpos, 1]) / 2)
-        bounds_range = torch.from_numpy((self.model.jnt_range[self.joint_qpos, 1] - self.model.jnt_range[self.joint_qpos, 0]))
-        return (qpos - bounds_centre) * 2.0 / bounds_range
-    
-    def unnormalize_qpos(self, qpos):
-        """
-        map from (-1, 1) to joint bounds
-        """
-        if len(qpos.shape) == 1:
-            qpos = np.atleast_2d(qpos)
-        assert(qpos.shape[1] == 6), qpos
-        bounds_centre = (self.model.jnt_range[self.joint_qpos, 0] + self.model.jnt_range[self.joint_qpos, 1]) / 2
-        bounds_range = (self.model.jnt_range[self.joint_qpos, 1] - self.model.jnt_range[self.joint_qpos, 0])
-        return (qpos - bounds_centre) /2.0 * bounds_range
     
     def map_bounds(self, vals, in_range=None, out_range=None):
         """
@@ -323,7 +300,8 @@ class UfactoryLite6Env(gym.Env):
         
 
         if qpos is not None:
-            self.data.qpos[:6] = qpos
+            assert(len(qpos) == self.dof)
+            self.data.qpos[self.joint_qpos] = qpos
             mujoco.mj_forward(self.model, self.data)
 
         else:

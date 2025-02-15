@@ -378,3 +378,15 @@ To strip jupyter notebooks of outputs when committing but leave them locally, do
 - git config filter.strip-notebook-output.clean 'jupyter nbconvert --ClearOutputPreprocessor.enabled=True --to=notebook --stdin --stdout --log-level=ERROR'  
 - `echo "*.ipynb filter=strip-notebook-output" > .gitattributes` in the folder with the notebooks
 - Optionally, if you've already commited outputs, run `git add --renormalize .` to clear them
+
+## FFmpeg and pyav
+To use the libsvtav1 encoder (for Lerobot), it seemed like the only way to use it with ffmpeg was to build ffmpeg from source (didn't appear as an option after apt installing ffmpeg and libsvtav1. ffmpeg was also version 4.3 ish, and apparently there were some changes from v5.1 on that improve compatibility with libsvtav1).
+Using commands [here](https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu)
+1. mkdir ~/ffmpeg_sources, and cd into it
+2. Clone ffmpeg from github, checkout n5.1.6, 
+3. Also git clone https://gitlab.com/AOMediaCodec/SVT-AV1.git, and checkout v2.3.0 (there was a change after this in a function signature that broke compatibility with older ffmpeg)
+4. Build it as per the libsvtav1 compilation instructions from ffmpeg
+5. apt install libx264-dev libx265-dev libnuma-dev
+6. Compile as per ffmpeg instructions, removing unneeded "--enable-..." flags as necessary
+
+pyav had an error upon importing in Jupyter, a pip uninstall and reinstall pyav fixed this

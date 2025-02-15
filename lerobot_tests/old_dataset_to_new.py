@@ -93,6 +93,7 @@ if __name__ == "__main__":
     print(dataset_name)
     # Average fps across all episodes - assumes they are all same start and end time
     fps = len(old_dataset)/(old_dataset[-1]["timestamp"]-old_dataset[0]["timestamp"])/(old_dataset[-1]["episode_index"]+1)
+    fps = 31.25
     print(fps)
     features = {'task_index': {'dtype': 'int64', 'shape': (1,), 'names': None}}
     for feature in old_dataset.features:
@@ -129,6 +130,7 @@ if __name__ == "__main__":
         frame.pop('index')
         frame.pop('episode_index')
         frame.pop('frame_index')
+        frame["timestamp"] -= old_dataset[0]["timestamp"]
         new_dataset.add_frame(frame)
     
     new_dataset.save_episode(args.description)
