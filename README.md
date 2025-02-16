@@ -293,6 +293,15 @@ wget --content-disposition https://nvidia.box.com/shared/static/xpr06qe6ql3l6rj2
 I installed it locally so that each venv can use without reinstallation. Just set up the venv with this: `python -m venv venv --system-site-packages`
 You'll then have to do `pip install --ignore-installed jupyter` to get jupyter to use the venv. You may need to reactivate the env
 
+You can also symlink if you want to change a preexisting env.
+1. Record the paths for torch, in and outside of the venv, with torch.__path__
+2. `pip uninstall torch torchvision`
+3. Check which torch libraries are installed locally - probably torch, torchgen, torchvision - with `ls -ld /home/eugene/.local/lib/python3.10/site-packages/torch*` or whatever the local install directory is.
+4. Create symlinks for the packages. You can ignore directories that are suffixed with a particular version, e.g. torch-2.3.0.dist-info. It will look something like this: 
+    ```
+    ln -s /home/eugene/.local/lib/python3.10/site-packages/torch /media/ssd/eugene/robotic_manipulation/lerobot_venv/lib/python3.10/site-packages/torch
+    ```
+
 #### Official method which didn't quite work
 Find the release you want here:
 https://docs.nvidia.com/deeplearning/frameworks/install-pytorch-jetson-platform-release-notes/pytorch-jetson-rel.html#pytorch-jetson-rel
@@ -362,6 +371,8 @@ Running the preprocessing is quick - each batch of 1000 takes 0.07s, but loading
 According to getsizeof, each batch is 232 bytes, but the image data alone is definitely way more than this (3x224x224=150kB, still small tho)
 
 Managed to load dataset into ram with keep_in_memory=True, but still took about the same amount of time and exhibited the saw pattern
+
+Once in training (in a notebook) I encountered a memory leak that caused the kernel to quickly crash when in ran out of memory. Just calling torch.cuda.empty_cache() fixed this. I also called gc.collect() beforehand; this didn't reduce the memory usage but maybe it helped?
 
 ## CUDA/Pytorch Profiling
 Requires running as root (had to switch to root user `sudo su`). Setting `NVreg_RestrictProfilingToAdminUsers=0` with modprobe did not allow any user to do GPU profiling.

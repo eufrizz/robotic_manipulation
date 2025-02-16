@@ -91,13 +91,16 @@ if __name__ == "__main__":
     print(old_dataset)
     dataset_name = Path(args.input).with_suffix('').name
     print(dataset_name)
-    # Average fps across all episodes - assumes they are all same start and end time
-    fps = len(old_dataset)/(old_dataset[-1]["timestamp"]-old_dataset[0]["timestamp"])/(old_dataset[-1]["episode_index"]+1)
-    fps = 31.25
-    print(fps)
-    features = {'task_index': {'dtype': 'int64', 'shape': (1,), 'names': None}}
+    # FPS from first two timestamps
+    fps = 1/(old_dataset[1]["timestamp"]-old_dataset[0]["timestamp"])
+    # fps = 31.25
+    print(f"fps:{fps}")
+    features = {'task_index': {'dtype': 'int64', 'shape': (1,), 'names': None},
+                "action": {'dtype': 'float32', 'shape': (7,)}}
+    
+    action_type = "action.qpos" if "action.qpos" in old_dataset.features else "action.qvel" if "action.qvel" in old_dataset.features else None
     for feature in old_dataset.features:
-        if feature in ["index", "episode_index"]:
+        if feature in ["index", "episode_index", action_type, "action.gripper"]:
             continue
         elif isinstance(old_dataset.features[feature], datasets.features.image.Image):
             features[feature] = {'dtype': 'video',
@@ -131,7 +134,11 @@ if __name__ == "__main__":
         frame.pop('episode_index')
         frame.pop('frame_index')
         frame["timestamp"] -= old_dataset[0]["timestamp"]
+        
+        frame["action"] = frame[action_type] + [frame["action.gripper"]]
+        frame.pop(action_type)
+        frame.pop("action.gripper")
         new_dataset.add_frame(frame)
     
     new_dataset.save_episode(args.description)
-    
+    new_dataset.consolidate()
