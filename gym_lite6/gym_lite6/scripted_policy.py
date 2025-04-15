@@ -91,8 +91,8 @@ class GraspPolicy(ScriptedPolicyBase):
       quat_err = np.linalg.norm(res_quat)
 
       # TODO: need gravity compensation for tighter tolerances here, including Z
-      pos_reached = pos_xy_err < 3e-3 and pos_z_err < 5e-3
-      quat_reached = quat_err < 5e-3
+      pos_reached = pos_xy_err < 5e-3 and pos_z_err < 9e-3
+      quat_reached = quat_err < 9e-3
       # print(pos_xy_err, pos_z_err, quat_err)
 
       if pos_reached and quat_reached:
@@ -169,7 +169,7 @@ class GraspPolicy(ScriptedPolicyBase):
         action["pos"] = self.prev_action["pos"]
         action["quat"] = self.prev_action["quat"]
       # If we've been gripping for a bit of time
-      elif data.time > self.trajectory_params[self.stage]["contact_time"] + 0.2:
+      elif data.time > self.trajectory_params[self.stage]["contact_time"] + 0.1:
         self.stage += 1
         print(f"Transitioning to stage {self.stage}")
       else:
@@ -221,8 +221,8 @@ class LiftPolicy(ScriptedPolicyBase):
       mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
       quat_err = np.linalg.norm(res_quat)
 
-      pos_reached = pos_err < 5e-3
-      quat_reached = quat_err < 5e-3
+      pos_reached = pos_err < 7e-3
+      quat_reached = quat_err < 9e-3
       # print(pos_err, quat_err)
 
       if pos_reached and quat_reached:

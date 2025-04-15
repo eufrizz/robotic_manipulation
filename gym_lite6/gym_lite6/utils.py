@@ -98,7 +98,7 @@ def plot_dict_of_arrays(ep_dict, x_ax, keys=None, title_prefix="", sharey=True):
     
   
   for key in keys:
-    if hasattr(ep_dict[key][0], '__iter__'):
+    if hasattr(ep_dict[key][0], '__iter__') and ep_dict[key][0].shape:
       len_state = len(ep_dict[key][0])
     else:
       len_state = 1
