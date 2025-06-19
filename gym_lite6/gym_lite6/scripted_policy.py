@@ -3,23 +3,113 @@ import mujoco
 from gym_lite6 import utils
 from copy import deepcopy
 
+
+
+# upgraded_planner.py
+import numpy as np
+import mujoco
+
+# OMPL Imports
+from ompl import base as ob
+from ompl import geometric as og
+
+class OMPLPlanner:
+    """
+    A Path Planner that uses OMPL to find collision-free paths.
+    """
+    def __init__(self, env):
+        self.env = env
+        # 1. Create the OMPL State Space
+        # This defines the robot's configuration space (e.g., 6 joints)
+        self.space = ob.RealVectorStateSpace(self.env.unwrapped.dof)
+
+        # 2. Set the bounds for the state space from the model
+        bounds = ob.RealVectorBounds(self.env.unwrapped.dof)
+        for i in range(self.env.unwrapped.dof):
+            bounds.setLow(i, env.unwrapped.bounds[0][i])
+            bounds.setHigh(i, env.unwrapped.bounds[1][i])
+        self.space.setBounds(bounds)
+
+        # 3. Create SpaceInformation
+        # This combines the state space with the validity checker
+        self.si = ob.SpaceInformation(self.space)
+
+        # 4. Set the State Validity Checker
+        # This is the crucial link between OMPL and MuJoCo
+        self.si.setStateValidityChecker(ob.StateValidityCheckerFn(self.is_state_valid))
+    
+    def is_state_valid(self, state):
+        np_state = np.array([state[i] for i in range(self.env.unwrapped.dof)])
+        return self.env.is_state_valid(np_state)
+
+    def plan(self, start_qpos, goal_pos, goal_quat, timeout=5.0):
+        """
+        Plans a path from a start configuration to a goal pose using RRT-Connect.
+        """
+        print("Planning with OMPL...")
+        # A. Solve for the goal configuration using our IK solver
+        goal_qpos = self.env.solve_ik(goal_pos, goal_quat, init=start_qpos)
+        if goal_qpos is None:
+            print("OMPL planning failed: IK could not find a solution for the goal.")
+            return None
+
+        # B. Define the OMPL problem
+        pdef = ob.ProblemDefinition(self.si)
+        
+        # Set start state
+        start_state = ob.State(self.space)
+        for i in range(self.env.unwrapped.dof):
+            start_state[i] = start_qpos[i]
+
+        # Set goal state
+        goal_state = ob.State(self.space)
+        for i in range(self.env.unwrapped.dof):
+            goal_state[i] = goal_qpos[i]
+            
+        pdef.setStartAndGoalStates(start_state, goal_state)
+
+        # C. Instantiate the OMPL planner (RRT-Connect is a good default)
+        planner = og.RRTConnect(self.si)
+        planner.setProblemDefinition(pdef)
+        planner.setup()
+
+        # D. Solve the problem
+        solved = planner.solve(timeout) # Solve for a maximum of `timeout` seconds
+
+        if solved:
+            print("OMPL path found!")
+            # Get the planned path
+            path = pdef.getSolutionPath()
+            path.interpolate(int(path.length() * 20)) # Densify the path
+            
+            # Convert path from OMPL states to a list of numpy arrays
+            qpos_path = [np.array([path.getState(i)[j] for j in range(self.env.unwrapped.dof)]) for i in range(path.getStateCount())]
+            return qpos_path
+        else:
+            print("OMPL planning failed: No path could be found.")
+            return None
+
+
 class ScriptedPolicyBase(object):
   def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.15) -> None:
-    
     self.env = env
     self.ref_name = ref_name
     self.l_gripper_name = l_gripper_name
     self.r_gripper_name = r_gripper_name
     self.object_name = object_name
-    self.max_vel = max_vel
+    self.max_vel = max_vel # max_vel can be used by the planner to determine path duration/speed
 
+    # The planner is instantiated here!
+    self.planner = OMPLPlanner(self.env)
     self.reset()
 
   def __call__(self, model, data, observation, info):
     raise NotImplementedError
-  
+
   def reset(self):
     self.trajectory_params = {}
+    self.active_path = None
+    self.path_step = 0
     self.stage = 0
     self.done = False
     self.prev_action = None
@@ -31,158 +121,92 @@ class ScriptedPolicyBase(object):
 class GraspPolicy(ScriptedPolicyBase):
   def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.15) -> None:
     super().__init__(env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel)
-  
+
   def __call__(self, model, data, observation, info):
-    # Above the object
     action = {}
 
-    ref_quat = np.empty(4)
-    mujoco.mju_mat2Quat(ref_quat, data.site(self.ref_name).xmat)
-    ref_pos = deepcopy(data.site(self.ref_name).xpos)
-
-    # Trajectory to object
+    # Stage 0: Move to a pre-grasp position above the object
     if self.stage == 0:
-      if self.stage not in self.trajectory_params:
-        #TODO: deal with object on its side
-        # goal_pos[2] += model.geom(self.object_name).size[2]
-
-        # Align x with x or y
-        # x_axis = np.array([1, 0, 0])
-        # y_axis = np.array([0, 1, 0])
-        # min_rotation = 3.14
-        # for axis in [[1, 0, 0], [0, 1, 0]]:
-
-        #   vec = np.empty(3)
-        #   mujoco.mju_rotVecQuat(vec, axis, data.body(self.object_name).xquat)
-        #   angle = np.dot(vec, )
-        #   # Determine the direction of rotation (clockwise or counter-clockwise)
-        #   cross_product = np.cross(v1_normalized, v2_normalized)
-        #   min_rotation = 
-        
-
+      # If we don't have a path yet, plan one.
+      if self.active_path is None:
         goal_pos = deepcopy(data.geom(self.object_name).xpos)
-        goal_pos[2] += model.geom(self.object_name).size[2] * 2 + 0.005
+        goal_pos[2] += 0.10  # Pre-grasp height
+        goal_quat = np.array([0, 1, 0, 0]) # Top-down grasp orientation
+
+        # Get current configuration to plan from
+        start_qpos = deepcopy(data.qpos[:self.env.unwrapped.dof])
+
+        # Ask the planner for a path
+        self.active_path = self.planner.plan(start_qpos, goal_pos, goal_quat)
+        self.path_step = 0
+
+      # If a path exists, execute it.
+      if self.active_path:
+        action['qpos'] = self.active_path[self.path_step]
+        self.path_step += 1
+
+        # Open gripper in the second half of the path
+        if self.path_step > len(self.active_path) / 2:
+            action["gripper"] = -1
+        else:
+            action["gripper"] = 0
+
+        # Check if we've reached the end of the path for this stage
+        if self.path_step >= len(self.active_path):
+          self.stage += 1
+          self.active_path = None # Clear the path to trigger planning for the next stage
+          print(f"Transitioning to stage {self.stage}")
+      else:
+        # Planning failed, what to do? Maybe stay put.
+        print("Stage 0: Planning failed, holding position.")
+        action['qpos'] = None
+        # action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
+
+    # Stage 1: Lower down to the grasp position
+    elif self.stage == 1:
+      action["gripper"] = -1 # Keep gripper open
+      if self.active_path is None:
+        # The goal is now closer to the object
+        goal_pos = deepcopy(data.geom(self.object_name).xpos)
+        goal_pos[2] = model.geom(self.object_name).size[2] * 2 - 0.02
         goal_quat = np.array([0, 1, 0, 0])
 
-        T_start = utils.get_tf_matrix(ref_pos, ref_quat)
-        T_end = utils.get_tf_matrix(goal_pos, goal_quat)
+        start_qpos = deepcopy(data.qpos[:self.env.unwrapped.dof])
+        self.active_path = self.planner.plan(start_qpos, goal_pos, goal_quat)
+        self.path_step = 0
 
-        # Straight line distance to keep in maximum straight line velocity
-        dist = np.linalg.norm(goal_pos - ref_pos)
-        # Go for anywhere between 0.5 to 0.966 of max vel
-        vel_scale = np.random.rand() * 0.4 + 0.6
-        end_time = dist/(vel_scale * self.max_vel)
-
-        self.trajectory_params = {0: {"start_time": data.time, "end_time": data.time + end_time, "T_start": T_start, "T_end": T_end, "goal_pos": goal_pos, "goal_quat": goal_quat}}
-        print(self.trajectory_params)
-        self.stage = 0
-        self.done = False
-
-      # Open gripper in last half second
-      if data.time > self.trajectory_params[self.stage]["end_time"] - 0.5:
-        action["gripper"] = -1
+      if self.active_path:
+        action['qpos'] = self.active_path[self.path_step]
+        self.path_step += 1
+        if self.path_step >= len(self.active_path):
+          self.stage += 1
+          self.active_path = None
+          print(f"Transitioning to stage {self.stage}")
       else:
-        action["gripper"] = 0
+        print("Stage 1: Planning failed, holding position.")
+        action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
 
-      pos_xy_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"][:2] - ref_pos[:2])
-      pos_z_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"][2] - ref_pos[2])
-      res_quat = np.empty(3)
-      mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
-      quat_err = np.linalg.norm(res_quat)
-
-      # TODO: need gravity compensation for tighter tolerances here, including Z
-      pos_reached = pos_xy_err < 5e-3 and pos_z_err < 9e-3
-      quat_reached = quat_err < 9e-3
-      # print(pos_xy_err, pos_z_err, quat_err)
-
-      if pos_reached and quat_reached:
-        self.stage += 1
-        print(f"Transitioning to stage {self.stage}")
-      elif data.time > self.trajectory_params[self.stage]["end_time"]:
-        action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
-        action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
-        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-      else:
-        action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-      
-    if self.stage == 1:
-      # Lower down around block
-      # data.site(self.ref_name)
-
-      action["gripper"] = -1
-
-      if self.stage not in self.trajectory_params:
-        goal_pos = deepcopy(self.trajectory_params[0]["goal_pos"])
-        # Grip height
-        goal_pos[2] = max(model.geom(self.object_name).size[2] * 2 - 0.02, 0.001)
-        goal_quat = np.array([0, 1, 0, 0])
-
-        T_start = utils.get_tf_matrix(ref_pos, ref_quat)
-        T_end = utils.get_tf_matrix(goal_pos, goal_quat)
-
-        end_time = 1
-
-        self.trajectory_params[self.stage] = {"start_time": data.time, "end_time": data.time + end_time, "T_start": T_start, "T_end": T_end, "goal_pos": goal_pos, "goal_quat": goal_quat}
-
-      pos_err = np.linalg.norm(self.trajectory_params[self.stage]["goal_pos"] - ref_pos)
-      res_quat = np.empty(3)
-      mujoco.mju_subQuat(res_quat, self.trajectory_params[self.stage]["goal_quat"], ref_quat)
-      quat_err = np.linalg.norm(res_quat)
-
-      pos_reached = pos_err < 3e-3
-      quat_reached = quat_err < 5e-3
-
-      if pos_reached:
-        self.stage += 1
-        print(f"Transitioning to stage {self.stage}")
-      elif data.time > self.trajectory_params[self.stage]["end_time"]:
-        action["pos"] = self.trajectory_params[self.stage]["goal_pos"]
-        action["quat"] = self.trajectory_params[self.stage]["goal_quat"]
-        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-      else:
-        action["pos"], action["quat"] = self.get_waypoint(data.time, self.trajectory_params[self.stage])
-        action["qpos"] = self.env.unwrapped.solve_ik(action["pos"], action["quat"])
-    
-    # Grip
-    if self.stage == 2:
-
+    # Stage 2: Close the gripper
+    elif self.stage == 2:
       action["gripper"] = 1
+      action['qpos'] = self.prev_action['qpos'] # Hold joint positions
 
-      if self.stage not in self.trajectory_params:
-        self.trajectory_params[self.stage] = {}
-      
-      l_gripper_touching_box = False
-      r_gripper_touching_box = False
+      # Simple time-based transition for gripping
+      if not hasattr(self, 'grip_start_time'):
+          self.grip_start_time = data.time
+      if data.time - self.grip_start_time > 0.5: # Grip for 0.5 seconds
+          self.stage += 1
+          delattr(self, 'grip_start_time')
+          print(f"Transitioning to stage {self.stage}")
 
-      for geom in data.contact.geom:
-        if all(np.isin(geom, [model.geom(self.object_name).id, model.geom(self.l_gripper_name).id])):
-          l_gripper_touching_box = True
-        if all(np.isin(geom, [model.geom(self.object_name).id,  model.geom(self.r_gripper_name).id])):
-          r_gripper_touching_box = True
-
-      if l_gripper_touching_box and r_gripper_touching_box and "contact_time" not in self.trajectory_params[self.stage]:
-        self.trajectory_params[self.stage]["contact_time"] = data.time
-      
-      if "contact_time" not in self.trajectory_params[self.stage]:
-        action["qpos"] = self.prev_action["qpos"]
-        action["pos"] = self.prev_action["pos"]
-        action["quat"] = self.prev_action["quat"]
-      # If we've been gripping for a bit of time
-      elif data.time > self.trajectory_params[self.stage]["contact_time"] + 0.1:
-        self.stage += 1
-        print(f"Transitioning to stage {self.stage}")
-      else:
-        action["qpos"] = self.prev_action["qpos"]
-        action["pos"] = self.prev_action["pos"]
-        action["quat"] = self.prev_action["quat"]
-    
-    if self.stage == 3:
+    # Stage 3: Grasp is complete
+    elif self.stage == 3:
       action = self.prev_action
       self.done = True
-    
+
     self.prev_action = deepcopy(action)
     return action
+
 
 class LiftPolicy(ScriptedPolicyBase):
   def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.15, lift_height=0.25) -> None:
@@ -263,3 +287,5 @@ class GraspAndLiftPolicy(ScriptedPolicyBase):
     self.stage = 0
     for policy in self.policies:
       policy.reset()
+
+

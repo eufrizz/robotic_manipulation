@@ -379,12 +379,15 @@ class UfactoryLite6Env(gym.Env):
         return observation
         
 
-    def solve_ik(self, pos, quat):
+    def solve_ik(self, pos, quat, init=None):
         """
         Solve for an end effector pose, return joint angles
         """
 
-        x0 = self.data.qpos[self.joint_qpos]
+        if init is None:
+            x0 = self.data.qpos[self.joint_qpos]
+        else:
+            x0 = init
 
         ik_target = lambda x: self.ik(x, pos=pos, quat=quat, radius=0.5,
                                 reg_target=x0, reg=0.01)
@@ -600,3 +603,18 @@ class UfactoryLite6Env(gym.Env):
         Get the position and orientation of a body e.g. the box
         """
         return self.data.body(body).xpos, self.data.body(body).xquat
+
+    def is_state_valid(self, state):
+        """OMPL State Validity Checker using MuJoCo for collisions."""
+        # Convert OMPL state to numpy array
+        qpos = np.array(state[:self.dof])
+        
+        # Set the robot's configuration in the MuJoCo simulation
+        self.ik_data.qpos[:self.dof] = qpos
+        
+        # Perform a forward kinematics step to update geometry and check for contacts
+        mujoco.mj_forward(self.model, self.ik_data)
+        
+        # A state is valid if there are no collisions
+        return not any(np.isin(self.ik_data.contact.geom.flatten(), np.arange(1, 18)))
+        # return self.ik_data.ncon == 0
