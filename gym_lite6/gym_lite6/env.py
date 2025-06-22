@@ -325,12 +325,11 @@ class UfactoryLite6Env(gym.Env):
         # assert action.ndim == 1
         if self.action_type not in action:
           raise NotImplementedError(f"Action does not correspond to selected action type {self.action_type}")
-        self.data.ctrl[self.joint_actuators] = action[self.action_type]
-        
-        self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
         
         timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
         for i in range(timesteps_per_frame):
+            self.data.ctrl[self.joint_actuators] = action[self.action_type]
+            self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
             mujoco.mj_step(self.model, self.data)
         observation = self._get_observation()
         reward = self.task.get_reward(self.model, self.data)

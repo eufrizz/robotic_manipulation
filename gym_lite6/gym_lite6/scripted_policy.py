@@ -40,7 +40,7 @@ class OMPLPlanner:
     
     def is_state_valid(self, state):
         np_state = np.array([state[i] for i in range(self.env.unwrapped.dof)])
-        return self.env.is_state_valid(np_state)
+        return self.env.unwrapped.is_state_valid(np_state)
 
     def plan(self, start_qpos, goal_pos, goal_quat, timeout=5.0):
         """
@@ -48,7 +48,7 @@ class OMPLPlanner:
         """
         print("Planning with OMPL...")
         # A. Solve for the goal configuration using our IK solver
-        goal_qpos = self.env.solve_ik(goal_pos, goal_quat, init=start_qpos)
+        goal_qpos = self.env.unwrapped.solve_ik(goal_pos, goal_quat, init=start_qpos)
         if goal_qpos is None:
             print("OMPL planning failed: IK could not find a solution for the goal.")
             return None
@@ -69,7 +69,7 @@ class OMPLPlanner:
         pdef.setStartAndGoalStates(start_state, goal_state)
 
         # C. Instantiate the OMPL planner (RRT-Connect is a good default)
-        planner = og.RRTConnect(self.si)
+        planner = og.RRTstar(self.si)
         planner.setProblemDefinition(pdef)
         planner.setup()
 
@@ -80,7 +80,7 @@ class OMPLPlanner:
             print("OMPL path found!")
             # Get the planned path
             path = pdef.getSolutionPath()
-            path.interpolate(int(path.length() * 20)) # Densify the path
+            path.interpolate(int(path.length() * 40)) # Densify the path
             
             # Convert path from OMPL states to a list of numpy arrays
             qpos_path = [np.array([path.getState(i)[j] for j in range(self.env.unwrapped.dof)]) for i in range(path.getStateCount())]
@@ -98,6 +98,7 @@ class ScriptedPolicyBase(object):
     self.r_gripper_name = r_gripper_name
     self.object_name = object_name
     self.max_vel = max_vel # max_vel can be used by the planner to determine path duration/speed
+    self.max_vel_step = max_vel/self.env.metadata["render_fps"]
 
     # The planner is instantiated here!
     self.planner = OMPLPlanner(self.env)
@@ -121,10 +122,21 @@ class ScriptedPolicyBase(object):
 class GraspPolicy(ScriptedPolicyBase):
   def __init__(self, env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel=0.15) -> None:
     super().__init__(env, ref_name, object_name, l_gripper_name, r_gripper_name, max_vel)
+  
+  def constrain_to_max_vel(self, curr_pos, next_pos):
+    diff = next_pos - curr_pos
+    max_diff = np.max(np.abs(diff))
+    if max_diff > self.max_vel_step:
+      print(self.max_vel_step)
+      # Scale to max_vel
+      return curr_pos + diff/max_diff * self.max_vel_step
+    else:
+      return next_pos
 
   def __call__(self, model, data, observation, info):
     action = {}
 
+    curr_qpos = deepcopy(data.qpos[:self.env.unwrapped.dof])
     # Stage 0: Move to a pre-grasp position above the object
     if self.stage == 0:
       # If we don't have a path yet, plan one.
@@ -133,33 +145,41 @@ class GraspPolicy(ScriptedPolicyBase):
         goal_pos[2] += 0.10  # Pre-grasp height
         goal_quat = np.array([0, 1, 0, 0]) # Top-down grasp orientation
 
-        # Get current configuration to plan from
-        start_qpos = deepcopy(data.qpos[:self.env.unwrapped.dof])
-
         # Ask the planner for a path
-        self.active_path = self.planner.plan(start_qpos, goal_pos, goal_quat)
+        self.active_path = self.planner.plan(curr_qpos, goal_pos, goal_quat)
+        print(self.active_path)
         self.path_step = 0
 
       # If a path exists, execute it.
       if self.active_path:
-        action['qpos'] = self.active_path[self.path_step]
+        # If close to target, move to next
+        # max_diff = np.max(np.abs(self.active_path[self.path_step] - curr_qpos))
+        # if max_diff < 0.1:
         self.path_step += 1
-
-        # Open gripper in the second half of the path
-        if self.path_step > len(self.active_path) / 2:
-            action["gripper"] = -1
-        else:
-            action["gripper"] = 0
-
+        
         # Check if we've reached the end of the path for this stage
         if self.path_step >= len(self.active_path):
-          self.stage += 1
-          self.active_path = None # Clear the path to trigger planning for the next stage
-          print(f"Transitioning to stage {self.stage}")
+          action['qpos'] = self.active_path[-1]
+          action["gripper"] = -1
+
+          max_diff = np.max(np.abs(self.active_path[-1] - curr_qpos))
+          if max_diff < 0.08:
+            self.stage += 1
+            self.active_path = None # Clear the path to trigger planning for the next stage
+            print(f"Transitioning to stage {self.stage}")
+        else:
+          action['qpos'] = self.active_path[self.path_step] # self.constrain_to_max_vel(self.prev_action["qpos"] if self.prev_action else curr_qpos, self.active_path[self.path_step])
+
+          # Open gripper in the second half of the path
+          if self.path_step > len(self.active_path) / 2:
+              action["gripper"] = -1
+          else:
+              action["gripper"] = 0
+        
       else:
         # Planning failed, what to do? Maybe stay put.
-        print("Stage 0: Planning failed, holding position.")
-        action['qpos'] = None
+        print("Stage 0: Planning failed")
+        action = None
         # action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
 
     # Stage 1: Lower down to the grasp position
@@ -176,12 +196,23 @@ class GraspPolicy(ScriptedPolicyBase):
         self.path_step = 0
 
       if self.active_path:
-        action['qpos'] = self.active_path[self.path_step]
+        # max_diff = np.max(np.abs(self.active_path[self.path_step] - curr_qpos))
+        # if max_diff < 0.1:
         self.path_step += 1
+        
         if self.path_step >= len(self.active_path):
-          self.stage += 1
-          self.active_path = None
-          print(f"Transitioning to stage {self.stage}")
+          action['qpos'] = self.active_path[-1]
+          action["gripper"] = -1
+
+          max_diff = np.max(np.abs(self.active_path[-1] - curr_qpos))
+          if max_diff < 0.08:
+            self.stage += 1
+            self.active_path = None # Clear the path to trigger planning for the next stage
+            print(f"Transitioning to stage {self.stage}")
+        else:
+          # action['qpos'] = self.constrain_to_max_vel(self.prev_action["qpos"] if self.prev_action else curr_qpos, self.active_path[self.path_step])
+          action['qpos'] = self.active_path[self.path_step]
+        
       else:
         print("Stage 1: Planning failed, holding position.")
         action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
