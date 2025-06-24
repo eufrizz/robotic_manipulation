@@ -28,10 +28,13 @@ class UfactoryLite6Env(gym.Env):
         render_mode="rgb_array",
         visualization_width: int=640,
         visualization_height: int=480,
-        render_fps=30
+        render_fps=30,
+        joint_noise_magnitude=0
     ):
         self.metadata["render_fps"] = render_fps
         super().__init__()
+
+        self.joint_noise_magnitude=joint_noise_magnitude
 
         self.model = self.load_xmls([scene_xml, model_xml, obj_xml])
         self.data = mujoco.MjData(self.model)
@@ -330,6 +333,13 @@ class UfactoryLite6Env(gym.Env):
         for i in range(timesteps_per_frame):
             self.data.ctrl[self.joint_actuators] = action[self.action_type]
             self.data.ctrl[self.model.actuator('gripper').id] = self.gripper_action_to_force(action["gripper"])
+
+            # --- Add noise here ---
+            if self.joint_noise_magnitude > 0:
+                noise = self.np_random.normal(size=self.dof) * self.joint_noise_magnitude
+                # self.data.qfrc_applied[self.joint_actuators] += noise
+                self.data.ctrl[self.joint_actuators] += noise
+
             mujoco.mj_step(self.model, self.data)
         observation = self._get_observation()
         reward = self.task.get_reward(self.model, self.data)
@@ -378,7 +388,7 @@ class UfactoryLite6Env(gym.Env):
         return observation
         
 
-    def solve_ik(self, pos, quat, init=None):
+    def solve_ik(self, pos, quat, init=None, radius=0.5, reg=0.01):
         """
         Solve for an end effector pose, return joint angles
         """
@@ -388,9 +398,9 @@ class UfactoryLite6Env(gym.Env):
         else:
             x0 = init
 
-        ik_target = lambda x: self.ik(x, pos=pos, quat=quat, radius=0.5,
-                                reg_target=x0, reg=0.01)
-        ik_jac_target = lambda x, res: self.ik_jac(x, radius=0.5, reg=0.01)
+        ik_target = lambda x: self.ik(x, pos=pos, quat=quat, radius=radius,
+                                reg_target=x0, reg=reg)
+        ik_jac_target = lambda x, res: self.ik_jac(x, radius=radius, reg=reg)
 
         x, _ = minimize.least_squares(x0, ik_target, self.bounds,
                                     jacobian=ik_jac_target,

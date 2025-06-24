@@ -42,13 +42,13 @@ class OMPLPlanner:
         np_state = np.array([state[i] for i in range(self.env.unwrapped.dof)])
         return self.env.unwrapped.is_state_valid(np_state)
 
-    def plan(self, start_qpos, goal_pos, goal_quat, timeout=5.0):
+    def plan(self, start_qpos, goal_pos, goal_quat, ref_qpos=None, timeout=5.0):
         """
         Plans a path from a start configuration to a goal pose using RRT-Connect.
         """
         print("Planning with OMPL...")
         # A. Solve for the goal configuration using our IK solver
-        goal_qpos = self.env.unwrapped.solve_ik(goal_pos, goal_quat, init=start_qpos)
+        goal_qpos = self.env.unwrapped.solve_ik(goal_pos, goal_quat, init=ref_qpos, radius=1)
         if goal_qpos is None:
             print("OMPL planning failed: IK could not find a solution for the goal.")
             return None
@@ -146,8 +146,7 @@ class GraspPolicy(ScriptedPolicyBase):
         goal_quat = np.array([0, 1, 0, 0]) # Top-down grasp orientation
 
         # Ask the planner for a path
-        self.active_path = self.planner.plan(curr_qpos, goal_pos, goal_quat)
-        print(self.active_path)
+        self.active_path = self.planner.plan(curr_qpos, goal_pos, goal_quat, ref_qpos=np.zeros_like(curr_qpos))
         self.path_step = 0
 
       # If a path exists, execute it.
@@ -180,7 +179,7 @@ class GraspPolicy(ScriptedPolicyBase):
         # Planning failed, what to do? Maybe stay put.
         print("Stage 0: Planning failed")
         action = None
-        # action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
+        # action['qpos'] = curr_qpos
 
     # Stage 1: Lower down to the grasp position
     elif self.stage == 1:
@@ -191,8 +190,7 @@ class GraspPolicy(ScriptedPolicyBase):
         goal_pos[2] = model.geom(self.object_name).size[2] * 2 - 0.02
         goal_quat = np.array([0, 1, 0, 0])
 
-        start_qpos = deepcopy(data.qpos[:self.env.unwrapped.dof])
-        self.active_path = self.planner.plan(start_qpos, goal_pos, goal_quat)
+        self.active_path = self.planner.plan(curr_qpos, goal_pos, goal_quat, ref_qpos=curr_qpos)
         self.path_step = 0
 
       if self.active_path:
@@ -215,17 +213,23 @@ class GraspPolicy(ScriptedPolicyBase):
         
       else:
         print("Stage 1: Planning failed, holding position.")
-        action['qpos'] = deepcopy(data.qpos[:self.env.unwrapped.dof])
+        action['qpos'] = curr_qpos
 
     # Stage 2: Close the gripper
     elif self.stage == 2:
+      # Keep tracking the cube if it moves whilst we grip it
+      goal_pos = deepcopy(data.geom(self.object_name).xpos)
+      goal_pos[2] = model.geom(self.object_name).size[2] * 2 - 0.02
+      goal_quat = np.array([0, 1, 0, 0])
+
+      action['qpos'] = self.env.unwrapped.solve_ik(goal_pos, goal_quat, init=curr_qpos)
+      # action['qpos'] = self.prev_action['qpos'] # Hold joint positions
       action["gripper"] = 1
-      action['qpos'] = self.prev_action['qpos'] # Hold joint positions
 
       # Simple time-based transition for gripping
       if not hasattr(self, 'grip_start_time'):
           self.grip_start_time = data.time
-      if data.time - self.grip_start_time > 0.5: # Grip for 0.5 seconds
+      if data.time - self.grip_start_time > 0.7: # Grip for 0.5 seconds
           self.stage += 1
           delattr(self, 'grip_start_time')
           print(f"Transitioning to stage {self.stage}")
