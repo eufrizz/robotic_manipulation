@@ -40,7 +40,7 @@ class WebSocketJoyServer:
         self.clients.remove(websocket)
         print(f"Client disconnected from {websocket.remote_address}")
 
-    async def handle_message(self, websocket, path):
+    async def handle_message(self, websocket):
         await self.register_client(websocket)
         try:
             async for message in websocket:
