@@ -228,6 +228,9 @@ class XarmControl:
             # self.arm.reset()
             # time.sleep(1)
             self.arm.motion_enable(True)
+            self.arm.set_gripper_enable(True)
+            self.gripper_state_change_time = time.monotonic()
+            self.gripper_setpoint = 0
             # time.sleep(1)
             self.arm.set_mode(mode=0)
             self.arm.set_state(state=0)
@@ -348,7 +351,7 @@ class XarmControl:
         next_pos = self.ee_setpos + dpos_w
         next_quat = np.zeros(4)
         mujoco.mju_mulQuat(next_quat, dquat_w, b_q_w)
-        next_pos = np.clip(next_pos, [-1, -1, 0], [1, 1, 1])
+        next_pos = np.clip(next_pos, [-1, -1, -0.01], [1, 1, 1])
 
         next_qpos = self.env.unwrapped.solve_ik(next_pos, next_quat, init=self.state)
         # print(f"{self.state=} {self.ee_setpos=}, {w_q_b=}, {dpos_w=}, {next_pos=}, {dquat_w=}, {next_quat=}, {next_qpos=}")
@@ -361,32 +364,61 @@ class XarmControl:
             self.env.step({"qpos": next_qpos, "gripper": 0})
         else:
             code = self.arm.set_servo_angle(angle=next_qpos, speed=0.4, wait=False)
-            print(code)
         
-        if not code:
-            self.ee_setquat = next_quat / np.linalg.norm(next_quat)
-            self.ee_setpos = next_pos
+            if not code:
+                self.ee_setquat = next_quat / np.linalg.norm(next_quat)
+                self.ee_setpos = next_pos
+            print(f"{self.gripper_setpoint=}")
+            # Close gripper (1)
+            if joy_msg.buttons[0] == 1:
+                if self.gripper_setpoint != 1:
+                    self.gripper_state_change_time = time.monotonic()
+                    self.arm.close_lite6_gripper()
+                    self.gripper_setpoint = 1
+            # Open gripper (-1) and turn off (0) after 1s
+            else:
+                # already closed
+                if self.gripper_setpoint == 1:
+                    self.gripper_state_change_time = time.monotonic()
+                    self.arm.open_lite6_gripper()
+                    self.gripper_setpoint = -1
+                elif self.gripper_setpoint == -1 and time.monotonic() - self.gripper_state_change_time > 1.0:
+                    self.arm.stop_lite6_gripper()
+                    self.gripper_setpoint = 0
 
 
         print(f"{self.ee_setpos=}, {self.ee_setquat=}")
 
     
 
-async def main(args):
-    server = WebSocketJoyServer()
-    xc = XarmControl(sim_mode=args.sim)
-
-    server.register_cb(xc.joy_cb)
-    server.set_xarm_control(xc)
-
-    # Start both the server and state broadcast
-    await asyncio.gather(
-        server.start_server(),
-        server.start_state_broadcast(rate_hz=10)
-    )
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--sim", action="store_true")
     args = parser.parse_args()
-    asyncio.run(main(args))
+    
+    # Create the XarmControl instance outside the main() function to access it
+    # in the exception handler.
+    xc = XarmControl(sim_mode=args.sim)
+
+    async def main_wrapper(args):
+        # We pass xc into main, or you can make xc a global variable
+        # for this example, let's just make it available.
+        server = WebSocketJoyServer()
+        server.register_cb(xc.joy_cb)
+        server.set_xarm_control(xc)
+
+        # Start both the server and state broadcast
+        await asyncio.gather(
+            server.start_server(),
+            server.start_state_broadcast(rate_hz=10)
+        )
+
+    try:
+        asyncio.run(main_wrapper(args))
+    except KeyboardInterrupt:
+        print("\nKeyboard interrupt received. Stopping xarm control...")
+        xc.stop()
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        # Optionally, you might want to stop the robot on other exceptions too
+        # xc.stop()
