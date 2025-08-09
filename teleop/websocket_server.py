@@ -11,6 +11,8 @@ import quaternion
 from pathlib import Path
 import gymnasium as gym
 import gym_lite6.env
+import argparse
+import time
 
 
 MENAGERIE_DIR = Path(__file__).parent.parent.resolve() / "mujoco_menagerie"  # note: absolute path
@@ -113,6 +115,9 @@ class WebSocketJoyServer:
         )
         print("WebSocket server started. Waiting for connections...")
         await server.wait_closed()
+        if self.xarm_control:
+            self.xarm_control.stop()
+        
     
     def register_cb(self, fn):
         self.callbacks.append(fn)
@@ -220,18 +225,39 @@ class XarmControl:
         else:
             from xarm.wrapper import XArmAPI
             self.arm = XArmAPI(ip, is_radian=True)
-            self.arm.reset()
+            # self.arm.reset()
+            # time.sleep(1)
+            self.arm.motion_enable(True)
+            # time.sleep(1)
             self.arm.set_mode(mode=0)
+            self.arm.set_state(state=0)
+
+            time.sleep(2)
+            self.arm.set_servo_angle(angle=np.array([-0.1,0,0,0,0,0]), speed=0.2, wait=True)
+
+            # self.arm.set_mode(mode=0)
+            # self.arm.set_state(state=0)
+            # # arm.set_mode(mode=1)
+            # time.sleep(1)
+            # self.arm.set_servo_angle(angle=np.zeros(6), speed=0.5, wait=True)
+            # print("Ready")
+            print(f"Ready. {self.arm.get_servo_angle()}")
+
             code, self.state = self.arm.get_servo_angle()
             if code:
                 print(f"Invalid pos reading, codes: {(code)}")
-            self.ee_setpos = self.arm.get_position_aa()[1]
-            # TODO
-            self.ee_setquat = observation['ee_pose']['quat']
+            self.ee_setpos, self.ee_setquat = xarm_to_mujoco_pose(self.arm.get_position_aa()[1])
+
+            self.err_state = False
+
         print(f"Starting pos: {self.state}, {self.ee_setpos}, {self.ee_setquat}")
-        self.max_speed = 0.01 # mm
-        self.max_rot = 0.1 # mm
+        self.max_speed = 0.005 # mm
+        self.max_rot = 0.02 # mm
     
+    def stop(self):
+        # Disable the arm
+        self.arm.motion_enable(False)
+
     def get_current_state(self):
         """Get current Xarm state including joint angles and end effector pose"""
         try:
@@ -282,11 +308,17 @@ class XarmControl:
         if self.sim_mode:
             self.state = self.env.unwrapped.data.qpos[:6]
         else:
-            code, self.state = self.arm.get_servo_angle()
-            if code:
-                print(f"Invalid pos reading, codes: {(code)}")
+            code, raw_state = self.arm.get_servo_angle()
+            
+            self.state = np.array(raw_state[:6])
+            self.gripper_state = raw_state[6]
+            print(self.state)
+            code, (self.err_state, warn) = self.arm.get_err_warn_code()
+            if self.err_state != 0:
+                self.ee_setpos, self.ee_setquat = xarm_to_mujoco_pose(self.arm.get_position_aa()[1])
+                print(f"Error state, resetting setpoints: {(self.err_state)}")
                 return
-        
+            
         # qpos = np.array(self.state[:6])
         # pos, w_q_b = self.env.unwrapped.forward_kinematics(qpos, self.ref_frame)
         b_q_w = self.ee_setquat
@@ -315,28 +347,34 @@ class XarmControl:
 
         next_pos = self.ee_setpos + dpos_w
         next_quat = np.zeros(4)
-        mujoco.mju_mulQuat(next_quat, b_q_w, dquat_w)
+        mujoco.mju_mulQuat(next_quat, dquat_w, b_q_w)
         next_pos = np.clip(next_pos, [-1, -1, 0], [1, 1, 1])
 
         next_qpos = self.env.unwrapped.solve_ik(next_pos, next_quat, init=self.state)
         # print(f"{self.state=} {self.ee_setpos=}, {w_q_b=}, {dpos_w=}, {next_pos=}, {dquat_w=}, {next_quat=}, {next_qpos=}")
         # print(f"{w_q_b=} {w_q_b=}, {dquat_b=}, {dquat_w=}")
 
-        self.ee_setquat = next_quat / np.linalg.norm(next_quat)
-        self.ee_setpos = next_pos
-
-
-        print(f"{self.ee_setpos=}, {self.ee_setquat=}")
+        
 
         if self.sim_mode:
             self.state = next_qpos
             self.env.step({"qpos": next_qpos, "gripper": 0})
+        else:
+            code = self.arm.set_servo_angle(angle=next_qpos, speed=0.4, wait=False)
+            print(code)
+        
+        if not code:
+            self.ee_setquat = next_quat / np.linalg.norm(next_quat)
+            self.ee_setpos = next_pos
+
+
+        print(f"{self.ee_setpos=}, {self.ee_setquat=}")
 
     
 
-async def main():
+async def main(args):
     server = WebSocketJoyServer()
-    xc = XarmControl(sim_mode=True)
+    xc = XarmControl(sim_mode=args.sim)
 
     server.register_cb(xc.joy_cb)
     server.set_xarm_control(xc)
@@ -348,4 +386,7 @@ async def main():
     )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--sim", action="store_true")
+    args = parser.parse_args()
+    asyncio.run(main(args))

@@ -8,6 +8,7 @@ import threading
 import gymnasium as gym
 import mujoco 
 import gym_lite6.env
+import argparse
 
 try:
     import pygame
@@ -161,35 +162,35 @@ class WebSocketJoyClient:
         
         # Left stick (WASD)
         if 'a' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[0] = -1.0
+            joy_msg.axes[3] = 1.0
         if 'd' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[0] = 1.0
+            joy_msg.axes[3] = -1.0
             
         if 'w' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[1] = -1.0
+            joy_msg.axes[2] = 1.0
         if 's' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[1] = 1.0
+            joy_msg.axes[2] = -1.0
 
         if 'j' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[2] = -1.0
+            joy_msg.axes[5] = -1.0
         if 'l' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[2] = 1.0
+            joy_msg.axes[5] = 1.0
             
         if 'i' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[3] = -1.0
+            joy_msg.axes[4] = -1.0
         if 'k' in [getattr(k, 'char', None) for k in self.keys_pressed]:
-            joy_msg.axes[3] = 1.0
+            joy_msg.axes[4] = 1.0
         
         # Right stick (Arrow keys)
         if keyboard.Key.left in self.keys_pressed:
-            joy_msg.axes[4] = -1.0
+            joy_msg.axes[0] = -1.0
         if keyboard.Key.right in self.keys_pressed:
-            joy_msg.axes[4] = 1.0
+            joy_msg.axes[0] = 1.0
             
         if keyboard.Key.up in self.keys_pressed:
-            joy_msg.axes[5] = -1.0
+            joy_msg.axes[1] = 1.0
         if keyboard.Key.down in self.keys_pressed:
-            joy_msg.axes[5] = 1.0
+            joy_msg.axes[1] = -1.0
         
         # Buttons
         joy_msg.buttons = [
@@ -210,25 +211,25 @@ class WebSocketJoyClient:
         
         # Left stick (WASD)
         if keys[pygame.K_a]:
-            joy_msg.axes[0] = -1.0
+            joy_msg.axes[3] = -1.0
         elif keys[pygame.K_d]:
-            joy_msg.axes[0] = 1.0
+            joy_msg.axes[3] = 1.0
             
         if keys[pygame.K_w]:
-            joy_msg.axes[1] = -1.0
+            joy_msg.axes[2] = -1.0
         elif keys[pygame.K_s]:
-            joy_msg.axes[1] = 1.0
+            joy_msg.axes[2] = 1.0
         
         # Right stick (Arrow keys)
         if keys[pygame.K_LEFT]:
-            joy_msg.axes[2] = -1.0
+            joy_msg.axes[1] = -1.0
         elif keys[pygame.K_RIGHT]:
-            joy_msg.axes[2] = 1.0
+            joy_msg.axes[1] = 1.0
             
         if keys[pygame.K_UP]:
-            joy_msg.axes[3] = -1.0
+            joy_msg.axes[0] = -1.0
         elif keys[pygame.K_DOWN]:
-            joy_msg.axes[3] = 1.0
+            joy_msg.axes[0] = 1.0
         
         # Buttons
         joy_msg.buttons = [
@@ -264,7 +265,7 @@ class WebSocketJoyClient:
                         input_type = "Joystick"
                     print(f"{input_type} - Axes: {joy_msg.axes} Buttons: {joy_msg.buttons[:2]}")
                 
-                await asyncio.sleep(0.1)  # 10 Hz
+                await asyncio.sleep(0.08)  # 10 Hz
                 
         except asyncio.CancelledError:
             print("Input data transmission cancelled")
@@ -444,12 +445,13 @@ class XarmViz:
 
 
 if __name__ == "__main__":
-    server_uri = 'ws://localhost:8765'
-    if len(sys.argv) > 1:
-        server_uri = f'ws://{sys.argv[1]}:8765'
-    
-    do_viz = True
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ip", default="localhost")
+    parser.add_argument("--viz", action="store_true")
+
+    args = parser.parse_args()
+    server_uri = f'ws://{args.ip}:8765'
+        
     print(f"Joystick WebSocket Client with Visualization")
     print(f"Server URI: {server_uri}")
     print("Make sure your joystick is connected before running this script")
@@ -459,7 +461,7 @@ if __name__ == "__main__":
     
     try:
         # Initialize visualization
-        if do_viz:
+        if args.viz:
             viz = XarmViz()
             client.registerStateCb(viz.update)
         # client.registerStateCb(client.print_xarm_state)
