@@ -281,6 +281,20 @@ Seems that the OpenCV installation fails to have CUDA anyway?
 
 
 ### PyTorch with CUDA
+Needed to upgrade to torchvision 0.20.0 with [matching torch version](https://pytorch.org/get-started/previous-versions/) 2.5.0
+Precompiled torch is available from NVIDIA: https://developer.nvidia.com/embedded/downloads#?search=torch
+torchvision had to be compiled from source.
+```
+git clone git@github.com:pytorch/vision.git
+sudo -E pip install -v --no-build-isolation
+```
+This required cudnn9 and cuspareselt to be installed
+https://developer.nvidia.com/cudnn-9-4-0-download-archive?target_os=Linux
+https://developer.nvidia.com/cusparselt-downloads?target_os=Linux&target_arch=aarch64-jetson&Compilation=Native&Distribution=Ubuntu&target_version=22.04&target_type=deb_network
+
+
+
+#### Prev version
 Found the released torch 2.3.0 binaries and torchivision 0.18.0 here: https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
 wget the files and install with pip install /path/to/file.whl
 The names also had to be changed to be valid .whl files - this can be fixed by using the --content-disposition flag which follows the redirects and gets the right name

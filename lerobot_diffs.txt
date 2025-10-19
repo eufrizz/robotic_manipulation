@@ -1,0 +1,47 @@
+diff --git a/lerobot/common/datasets/lerobot_dataset.py b/lerobot/common/datasets/lerobot_dataset.py
+index d8da85d6..e749ca41 100644
+--- a/lerobot/common/datasets/lerobot_dataset.py
++++ b/lerobot/common/datasets/lerobot_dataset.py
+@@ -853,7 +853,7 @@ class LeRobotDataset(torch.utils.data.Dataset):
+         episode_index = episode_buffer["episode_index"]
+ 
+         episode_buffer["index"] = np.arange(self.meta.total_frames, self.meta.total_frames + episode_length)
+-        episode_buffer["episode_index"] = np.full((episode_length,), episode_index)
++        episode_buffer["episode_index"] = np.full((episode_length,1), episode_index)
+ 
+         # Add new tasks to the tasks dictionary
+         for task in episode_tasks:
+@@ -925,7 +925,7 @@ class LeRobotDataset(torch.utils.data.Dataset):
+                     episode_index=episode_index, image_key=cam_key, frame_index=0
+                 ).parent
+                 if img_dir.is_dir():
+-                    shutil.rmtree(img_dir)
++                    shutil.rmtree(img_dir, ignore_errors=True)
+ 
+         # Reset the buffer
+         self.episode_buffer = self.create_episode_buffer()
+diff --git a/lerobot/common/datasets/utils.py b/lerobot/common/datasets/utils.py
+index 9d8a54db..54ad817b 100644
+--- a/lerobot/common/datasets/utils.py
++++ b/lerobot/common/datasets/utils.py
+@@ -415,7 +415,7 @@ def dataset_to_policy_features(features: dict[str, dict]) -> dict[str, PolicyFea
+             type = FeatureType.ENV
+         elif key.startswith("observation"):
+             type = FeatureType.STATE
+-        elif key == "action":
++        elif key.startswith("action"):
+             type = FeatureType.ACTION
+         else:
+             continue
+diff --git a/lerobot/scripts/train.py b/lerobot/scripts/train.py
+index 0de247be..1bb0e7b0 100644
+--- a/lerobot/scripts/train.py
++++ b/lerobot/scripts/train.py
+@@ -126,6 +126,7 @@ def train(cfg: TrainPipelineConfig):
+ 
+     logging.info("Creating dataset")
+     dataset = make_dataset(cfg)
++    print("delta ts:", dataset.delta_timestamps)
+ 
+     # Create environment used for evaluating checkpoints during training on simulation data.
+     # On real-world data, no need to create an environment as evaluations are done outside train.py,
