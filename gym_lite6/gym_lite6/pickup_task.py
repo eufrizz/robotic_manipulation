@@ -10,6 +10,7 @@ class GraspAndLiftTask(object):
         self.box_name = box_name
         self.floor_name = floor_name
         self.max_reward = 5
+        self.task_description = "Grasp and lift red cube"
     
     def get_reward(self, model, data):
         """
@@ -80,6 +81,7 @@ class GraspTask(object):
         self.box_name = box_name
         self.floor_name = floor_name
         self.max_reward = 3
+        self.task_description = "Grasp the red cube"
     
     def get_reward(self, model, data):
         """

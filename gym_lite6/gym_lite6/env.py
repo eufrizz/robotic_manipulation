@@ -54,7 +54,11 @@ class UfactoryLite6Env(gym.Env):
 
         self.bounds = [self.model.jnt_range[:6, 0], self.model.jnt_range[:6, 1]]
 
-        self.task = task
+        if hasattr(task, '__call__'):
+            self.task = task()
+        else:
+            self.task = task
+        self.task_description = self.task.task_description
         self.obs_type = obs_type
         self.action_type = action_type
         self.render_mode = render_mode
@@ -135,42 +139,45 @@ class UfactoryLite6Env(gym.Env):
                 ),
               }
             )
-        elif self.obs_type == "pixels_state":
+        elif self.obs_type == "pixels_state" or self.obs_type == "pixels_state_lerobot":
           self.observation_space = spaces.Dict(
-              {
-                "pixels": spaces.Dict(
-                    {
-                    "side": spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=(self.visualization_height, self.visualization_width, 3),
-                        dtype=np.uint8,
-                    ),
-                    "gripper": spaces.Box(
-                        low=0,
-                        high=255,
-                        shape=(self.visualization_height, self.visualization_width, 3),
-                        dtype=np.uint8,
-                    ),
-                    }
+            {
+              "pixels": spaces.Dict(
+                {
+                "side": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self.visualization_height, self.visualization_width, 3),
+                    dtype=np.uint8,
                 ),
-                "state": spaces.Dict(
-                    {
-                        "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], shape=(6,), dtype=np.float64),
-                        "qvel": spaces.Box(low=-100, high=100, shape=(len(self.joint_qpos),), dtype=np.float64),
-                        "gripper": spaces.Discrete(3, start=-1) # release, off, grip
-                    }
+                "gripper": spaces.Box(
+                    low=0,
+                    high=255,
+                    shape=(self.visualization_height, self.visualization_width, 3),
+                    dtype=np.uint8,
                 ),
-                "ee_pose": spaces.Dict(
-                    {
-                        "pos": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
-                        "quat": spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float64),
-                        "vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
-                        "ang_vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
-                    }
-                ),
-              }
+                }
+              ),
+              "state": spaces.Dict(
+                  {
+                      "qpos": spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0], high=self.model.jnt_range[self.joint_qpos, 1], shape=(6,), dtype=np.float64),
+                      "qvel": spaces.Box(low=-100, high=100, shape=(len(self.joint_qpos),), dtype=np.float64),
+                      "gripper": spaces.Discrete(3, start=-1) # release, off, grip
+                  }
+              ),
+              "ee_pose": spaces.Dict(
+                  {
+                      "pos": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                      "quat": spaces.Box(low=-1, high=1, shape=(4,), dtype=np.float64),
+                      "vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                      "ang_vel": spaces.Box(low=-100, high=100, shape=(3,), dtype=np.float64),
+                  }
+              ),
+            }
           )
+          if self.obs_type == "pixels_state_lerobot":
+              self.observation_space["agent_pos"] = spaces.Box(low=np.concatenate((self.model.jnt_range[self.joint_qpos, 0], [-1])), high=np.concatenate((self.model.jnt_range[self.joint_qpos, 1],[1])), shape=(7,), dtype=np.float64)
+              print(f"{self.observation_space.keys()=}")
         else:
           raise KeyError(f"Invalid observation type {self.obs_type}")
 
@@ -190,6 +197,9 @@ class UfactoryLite6Env(gym.Env):
                 }
             )
             self.disable_actuator_group(1)
+        elif self.action_type == "qpos_gripper":
+            self.action_space = spaces.Box(low=self.model.jnt_range[self.joint_qpos, 0]+[-1], high=self.model.jnt_range[self.joint_qpos, 1]+[1], dtype=np.float64)
+            self.disable_actuator_group(2)
         # elif self.action_type == "ee_vel":
         #     self.action_space = spaces.Dict(
         #         {
@@ -326,8 +336,15 @@ class UfactoryLite6Env(gym.Env):
 
     def step(self, action):
         # assert action.ndim == 1
-        if self.action_type not in action:
+        if isinstance(action, dict) and self.action_type not in action:
           raise NotImplementedError(f"Action does not correspond to selected action type {self.action_type}")
+    
+        if self.action_type == "qpos_gripper":
+            # split qpos and gripper up
+            action = {
+                "qpos_gripper": action[:-1],
+                "gripper": round(np.clip(action[-1], -1, 1))
+            }
         
         timesteps_per_frame = int(1 / self.metadata["render_fps"] / self.model.opt.timestep)
         for i in range(timesteps_per_frame):
@@ -350,12 +367,11 @@ class UfactoryLite6Env(gym.Env):
         terminated = is_success = reward == self.task.max_reward
 
         info = {"is_success": is_success}
-
         # truncated = False
         return observation, reward, terminated, truncated, info
     
     def _get_observation(self, ref_frame='end_effector'):
-        if self.obs_type == "pixels_state":
+        if self.obs_type == "pixels_state" or self.obs_type == "pixels_state_lerobot":
             qpos = deepcopy(self.data.qpos[:self.dof])
             qvel = deepcopy(self.data.qvel[:self.dof])
             gripper = self.force_to_gripper_action(deepcopy(self.data.actuator('gripper').ctrl))
@@ -381,7 +397,8 @@ class UfactoryLite6Env(gym.Env):
                                 "pos": pos, "quat": quat, "vel": vel, "ang_vel": ang_vel
                             },
                         }
-
+            if self.obs_type == "pixels_state_lerobot":
+                observation["agent_pos"] = np.concatenate((qpos, np.array([gripper])))
         else:
             raise NotImplementedError()
             observation =  {"state": {"pose": np.hstack((pos, quat)), "gripper": 0}, "pixels": self.render()}
