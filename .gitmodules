@@ -13,3 +13,6 @@
 [submodule "mujoco_mpc"]
 	path = mujoco_mpc
 	url = git@github.com:google-deepmind/mujoco_mpc.git
+[submodule "gym_xarmlite6"]
+	path = gym_xarmlite6
+	url = git@github.com:eufrizz/gym_xarmlite6.git
